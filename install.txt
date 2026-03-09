@@ -1,0 +1,13 @@
+# 1. Create a fresh virtual environment named "build_env"
+python -m venv build_env
+
+# 2. Activate it (Windows)
+build_env\Scripts\activate
+# OR Activate it (Mac/Linux)
+source build_env/bin/activate
+
+# 3. Install only your strict requirements plus PyInstaller
+pip install PySide6 pygame praat-parselmouth numpy matplotlib pyaudio PyInstaller
+
+# 4. run pyinstaller
+python build_executable.py
