@@ -117,10 +117,10 @@ Files are automatically saved to `recordings/` on exit:
 
 ## Documentation
 
-Comprehensive documentation available in the [wiki](wiki/):
+Comprehensive documentation available in the [wiki](https://github.com/santiagobarreda/VocalTrack/wiki):
 
-- [Installation and Launch](wiki/Installation-and-Launch.md)
-- [Basic Usage](wiki/Basic-Usage.md)
+- [Installation and Launch](wiki/Installation-and-Launch)
+- [Basic Usage](wiki/Basic-Usage)
 - [Mode Guides](wiki/Mode-Guides.md)
 - [Settings Reference](wiki/Settings-Reference.md)
 - [Outputs and File Formats](wiki/Outputs-and-File-Formats.md)
