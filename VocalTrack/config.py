@@ -50,12 +50,12 @@ LIVESPECTROGRAM_CONFIG = {
     'gui_width': 1200,  # Display window width in pixels (typical: 1200 for widescreen)
     'gui_height': 600,  # Display window height in pixels; larger height = finer frequency resolution
     'max_freq': 5000,  # Maximum frequency to display in Hz; limits X-axis range (avoids aliasing above 5kHz for 10kHz sample rate)
-    'display_seconds': 1.0,  # Time window duration in seconds; controls horizontal scroll speed (5s typical for real-time response)
+    'display_seconds': 3.0,  # Time window duration in seconds; controls horizontal scroll speed (5s typical for real-time response)
     'colormap': 'plasma',  # Matplotlib colormap name for magnitude-to-color mapping; 'plasma' is perceptually uniform
     'dynamic_range': 40,  # Dynamic range in dB for spectrogram amplitude display; controls contrast (smaller=more detail, larger=more contrast)
     'fps': 60,  # Frame rate for display refresh (30 fps is UI-responsive but lower CPU than 60)
-    'chunk_ms': 15.0,                 # Duration of each audio chunk in ms
-    'number_of_chunks': 3,            # Number of chunks to form a complete analysis window (15ms * 3 = 45ms window)
+    'chunk_ms': 6.0,                 # Duration of each audio chunk in ms
+    'number_of_chunks': 1,            # Number of chunks to form a complete analysis window (15ms * 3 = 45ms window)
     'padding_length_ms': 20.0,  # Zero-padding length in milliseconds for frequency resolution enhancement (typical: 20ms)
 }
 
