@@ -4,6 +4,8 @@
 
 Real-time speech visualization toolkit with four specialized modes for acoustic analysis. Features a user-friendly GUI launcher, configurable analysis parameters, and automated data export for research,  clinical, and pedagogical applications.
 
+For a detailed description of the **VocalTrack** architecture and signal processing pipeline, please refer to the [methods article](https://github.com/santiagobarreda/VocalTrack/releases/download/v1.0.0-beta/Barreda_2026_VocalTrack_underreview.pdf), currently under review, or check out the comprehensive documentation available in the [wiki](https://github.com/santiagobarreda/VocalTrack/wiki).
+
 ## Features
 
 - **Four Visualization Modes**:
@@ -114,18 +116,6 @@ Files are automatically saved to `recordings/` on exit:
 - `speaker_YYYY-MM-DD_HHMMSS_pitch.csv`: Timestamped f0 data (voiced frames only)
 
 **Note:** LiveSpectrogram and LiveSpectrum are visualization-only modes and do not export CSV files by default.
-
-## Documentation
-
-Comprehensive documentation available in the [wiki](https://github.com/santiagobarreda/VocalTrack/wiki):
-
-- [Installation and Launch](wiki/Installation-and-Launch)
-- [Basic Usage](wiki/Basic-Usage)
-- [Mode Guides](wiki/Mode-Guides.md)
-- [Settings Reference](wiki/Settings-Reference.md)
-- [Outputs and File Formats](wiki/Outputs-and-File-Formats.md)
-- [Benchmarking](wiki/Benchmarking.md)
-- [Troubleshooting](wiki/Troubleshooting.md)
 
 ## Architecture
 
