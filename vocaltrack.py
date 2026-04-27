@@ -3,6 +3,16 @@
 import sys
 import os
 
+# Ensure Qt can find its platform plugins when running from a venv.
+# This is needed on Windows when QT_QPA_PLATFORM_PLUGIN_PATH is not set externally.
+try:
+    import PySide6
+    _qt_plugin_path = os.path.join(os.path.dirname(PySide6.__file__), "plugins", "platforms")
+    if os.path.isdir(_qt_plugin_path):
+        os.environ.setdefault("QT_QPA_PLATFORM_PLUGIN_PATH", _qt_plugin_path)
+except Exception:
+    pass
+
 # Bring in all the visual building blocks from the PySide6 toolkit (buttons, windows, layouts, etc.)
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
