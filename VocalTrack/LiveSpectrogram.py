@@ -5,13 +5,12 @@
 # Normalize for normalizing data to 0-1 range for colormap application
 # Matplotlib for colormap access
 
+import json
 import logging
 import numpy as np
 import pygame
-from matplotlib.cm import ScalarMappable
-from matplotlib.colors import Normalize
-from matplotlib import colormaps
 import queue
+from importlib import resources
 
 # Import BaseAudioVisualizer for audio stream handling and display management
 # Import AudioProcessor for capturing and queuing audio chunks
@@ -34,6 +33,17 @@ class LiveSpectrogram(BaseAudioVisualizer):
     High-frequency content is boosted via pre-emphasis filtering for better visibility.
     Dynamic range and gain are user-adjustable for detail vs. contrast tradeoff.
     """
+
+    @staticmethod
+    def _load_colormap_table(colormap_name):
+        """Load a 256-color RGB lookup table from packaged JSON files."""
+        colormap_dir = resources.files("VocalTrack").joinpath("colormaps")
+        preferred = colormap_dir.joinpath(f"{colormap_name}.json")
+        fallback = colormap_dir.joinpath("plasma.json")
+        colormap_file = preferred if preferred.is_file() else fallback
+        with colormap_file.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        return np.array(data["colors"], dtype=np.uint8)
 
     def __init__(self,
                  gui_width=None,
@@ -159,12 +169,8 @@ class LiveSpectrogram(BaseAudioVisualizer):
         # Alpha coefficient (0.97) is standard for speech; amplifies fricatives and /s/ sounds
         self.pre_emphasis = 0.97
         
-        # Create matplotlib colormap object for mapping magnitude values to RGBA colors
-        # Normalize scales magnitude data to 0-255 range for colormap lookup
-        norm = Normalize(vmin=0, vmax=255)
-        # Load the specified colormap ('plasma' gives good perceptual scale)
-        cmap = colormaps[self.colormap_name]        # ScalarMappable applies normalized data to colormap to produce RGBA tuples
-        self.scalar_mappable = ScalarMappable(norm=norm, cmap=cmap)
+        # Load a local 256-entry RGB lookup table for this colormap.
+        self.colormap_table = self._load_colormap_table(self.colormap_name)
         
         # Create pygame surface for scrolling spectrogram display
         # This surface holds the entire spectrogram history visible on screen
@@ -255,8 +261,8 @@ class LiveSpectrogram(BaseAudioVisualizer):
         # Flip so low freq is at bottom (frequencies are already ordered low to high)
         magnitude_normalized = np.flipud(magnitude_normalized)
 
-        # Map the 0-255 magnitude indices to RGBA colors via matplotlib ScalarMappable
-        colors = self.scalar_mappable.to_rgba(magnitude_normalized, bytes=True)
+        # Map normalized magnitudes to RGB colors via local lookup table.
+        colors = self.colormap_table[magnitude_normalized]
 
         # Create column surface and fill with color per pixel row
         column_surface = pygame.Surface((width, self.GUI_HEIGHT))
