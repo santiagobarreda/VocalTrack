@@ -21,7 +21,7 @@ setup(
         "Operating System :: OS Independent",
         "Topic :: Multimedia :: Sound/Audio :: Analysis",
     ],
-    python_requires=">=3.7",
+    python_requires=">=3.7,<3.14",
     install_requires=[
         "pyaudio>=0.2.11",
         "praat-parselmouth>=0.4.0",
