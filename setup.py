@@ -12,6 +12,9 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/santiagobarreda/VocalTrack",
     packages=find_packages(),
+    package_data={
+        "VocalTrack": ["colormaps/*.json"],
+    },
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
@@ -21,14 +24,14 @@ setup(
     python_requires=">=3.7",
     install_requires=[
         "pyaudio>=0.2.11",
-        "parselmouth>=0.4.0",
+        "praat-parselmouth>=0.4.0",
         "pygame>=2.1.0",
         "numpy>=1.20.0",
+        "PySide6>=6.5.0",
     ],
     entry_points={
         "console_scripts": [
-            "live_vowel=liveaudio.livevowel:main",
-            "live_pitch=liveaudio.livepitch:main",
+            "vocaltrack=vocaltrack:main",
         ],
     },
 )
