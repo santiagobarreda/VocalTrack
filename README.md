@@ -47,6 +47,7 @@ Or download from GitHub and unzip into local directory.
 
 2. Install dependencies:
 ```bash
+pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 ```
 

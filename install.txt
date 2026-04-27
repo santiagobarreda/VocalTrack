@@ -7,7 +7,7 @@ build_env\Scripts\activate
 source build_env/bin/activate
 
 # 3. Install only your strict requirements plus PyInstaller
-pip install PySide6 pygame praat-parselmouth numpy matplotlib pyaudio PyInstaller
+pip install PySide6 pygame-ce praat-parselmouth numpy pyaudio PyInstaller
 
 # 4. run pyinstaller
 python build_executable.py

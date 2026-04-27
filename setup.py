@@ -25,7 +25,7 @@ setup(
     install_requires=[
         "pyaudio>=0.2.11",
         "praat-parselmouth>=0.4.0",
-        "pygame>=2.1.0",
+        "pygame-ce>=2.5.0",
         "numpy>=1.20.0",
         "PySide6>=6.5.0",
     ],
