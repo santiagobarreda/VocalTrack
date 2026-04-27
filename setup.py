@@ -21,9 +21,8 @@ setup(
         "Operating System :: OS Independent",
         "Topic :: Multimedia :: Sound/Audio :: Analysis",
     ],
-    python_requires=">=3.7,<3.14",
+    python_requires=">=3.7",
     install_requires=[
-        "pyaudio>=0.2.11",
         "praat-parselmouth>=0.4.0",
         "pygame-ce>=2.5.0",
         "numpy>=1.20.0",
