@@ -49,7 +49,7 @@ class LiveSpectrum(BaseAudioVisualizer):
             spec_config (dict, optional): Spectrum config dict. Uses config.LIVESPECTRUM_CONFIG if None.
             audio_config (dict, optional): Audio config dict. Uses config.AUDIO_CONFIG if None.
             analysis_config (dict, optional): Analysis config dict. Uses config.ANALYSIS_CONFIG if None.
-            input_device_index (int, optional): Audio input device index for portaudio selection.
+            input_device_index (int, optional): Audio input device index for QtMultimedia selection.
 
         Note:
             Sample rate is set automatically from max_formant (sample_rate = 2 × max_formant).

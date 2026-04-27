@@ -813,7 +813,7 @@ class LiveVowel(BaseAudioVisualizer):
                 # Silently ignore audio processor errors (e.g., already stopped)
                 # Using bare except to catch any possible error during cleanup
                 pass
-            # Stop audio capture thread and release PyAudio resources
+            # Stop audio capture thread and release audio backend resources
             # Always call even if stop_recording failed
             self.audio_processor.stop()
             

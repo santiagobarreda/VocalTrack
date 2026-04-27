@@ -70,7 +70,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
             spec_config: Full spectrogram config dict (if None, uses config.LIVESPECTROGRAM_CONFIG)
             audio_config: Full audio config dict (if None, uses config.AUDIO_CONFIG)
             analysis_config: Full analysis config dict (if None, uses config.ANALYSIS_CONFIG)
-            input_device_index: Audio input device index for portaudio device selection
+            input_device_index: Audio input device index for QtMultimedia device selection
         """
       
         # Load config dicts from parameters or use defaults from config module
