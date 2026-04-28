@@ -21,7 +21,7 @@ For a detailed description of the **VocalTrack** architecture and signal process
 
 ## How It Works
 
-1. **Audio Capture**: `AudioProcessor` continuously reads microphone input in small chunks via PyAudio
+1. **Audio Capture**: `AudioProcessor` continuously reads microphone input in small chunks via QtMultimedia (`QAudioSource`)
 2. **Windowing**: Chunks are combined to form analysis windows (configurable duration)
 3. **Acoustic Analysis**: `Sound` objects compute formants, pitch, or spectra depending on mode
 4. **Smoothing**: Adaptive `Smoother` maintains a memory applies 1-Euro filtering for stable trajectories
@@ -145,7 +145,7 @@ Run accuracy and timing benchmarks from the launcher:
 **No audio input:**
 - Open Recording Settings and verify input device
 - Check OS microphone permissions
-- Test: `python -c "import pyaudio; print(pyaudio.PyAudio().get_device_count())"`
+- Test: `python -c "from PySide6.QtMultimedia import QMediaDevices; print(len(QMediaDevices.audioInputs()))"`
 
 **Poor tracking quality:**
 - Adjust min/max f0 for your voice in Analysis Settings
