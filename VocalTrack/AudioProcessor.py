@@ -2,8 +2,9 @@
 import threading
 # Import queue for thread-safe communication between audio capture/analysis threads and the main thread
 import queue
-# Import PyAudio for cross-platform audio I/O (microphone access)
-import pyaudio
+# Import Qt core app and QtMultimedia audio capture APIs
+from PySide6.QtCore import QCoreApplication
+from PySide6.QtMultimedia import QAudioFormat, QAudioSource, QMediaDevices
 # Import numpy for efficient numerical array operations on audio samples
 import numpy as np
 # Import logging for debug/error messages and warnings
@@ -86,7 +87,7 @@ class AudioProcessor(threading.Thread):
         # Window size is solely determined by chunk size and number of chunks
         self.window_samples = self.chunk_size * self.number_of_chunks
         
-        # PyAudio stream object (initialized in run())
+        # Qt audio stream object (initialized in run())
         self.stream = None
         
         # Thread-safe queue for passing normalized audio vectors from capture thread to analysis thread
@@ -107,7 +108,7 @@ class AudioProcessor(threading.Thread):
         
         # Analysis thread handle (will be started in run())
         self.analysis_thread = None
-        # Store PyAudio instance for proper cleanup
+        # Store QAudioSource instance for proper cleanup
         self.port = None
         # Flag indicating whether to save raw audio to buffer
         self.recording_enabled = False
@@ -127,12 +128,58 @@ class AudioProcessor(threading.Thread):
             RuntimeError: If no audio device is available or stream initialization fails.
         """
         try:
-            # Initialize PyAudio (cross-platform audio I/O library)
-            self.port = pyaudio.PyAudio()
-            
+            # Ensure a Qt application exists before using QtMultimedia APIs
+            app = QCoreApplication.instance()
+            if app is None:
+                app = QCoreApplication([])
+
             # Check if any audio input devices are available
-            if self.port.get_device_count() == 0:
+            inputs = QMediaDevices.audioInputs()
+            if not inputs:
                 raise RuntimeError("No audio input devices found")
+
+            # Select requested input device by index when provided, otherwise use system default
+            if self.input_device_index is not None and 0 <= self.input_device_index < len(inputs):
+                input_device = inputs[self.input_device_index]
+            else:
+                input_device = QMediaDevices.defaultAudioInput()
+                if input_device is None or input_device.isNull():
+                    input_device = inputs[0]
+
+            # Request mono Int16 format at analysis sample rate
+            audio_format = QAudioFormat()
+            audio_format.setSampleRate(self.sample_rate)
+            audio_format.setChannelCount(1)
+            audio_format.setSampleFormat(QAudioFormat.SampleFormat.Int16)
+
+            # Instead of an error, Qt may return a similar supported format if the requested one is not available. 
+            # We check this and update our sample rate and chunk size accordingly to keep timing in sync.
+            # I'm going to need to add an eror pop up or something about this to notify the user
+            if not input_device.isFormatSupported(audio_format):
+                audio_format = input_device.preferredFormat()
+
+                # If the sample rate is different from what we requested, we need to update our internal 
+                # sample rate and chunk size to match the actual format. 
+                if audio_format.sampleRate() > 0:
+                    self.sample_rate = audio_format.sampleRate()
+                    self.chunk_size = max(round(self.chunk_ms * self.sample_rate / 1000), 1)
+                    self.window_samples = self.chunk_size * self.number_of_chunks
+                    last_len = max((self.number_of_chunks - 1) * self.chunk_size, 0)
+                    self.last_samples = np.zeros(last_len)
+
+            # Similarly, if the audio format is not Int16, we will need to convert raw bytes to Int16 ourselves in the capture loop.
+            # We will still request Int16, but if we get something else (e.g., Float), we can handle it in software.
+            bytes_per_frame = audio_format.bytesPerFrame()
+            if bytes_per_frame <= 0:
+                bytes_per_sample = {
+                    QAudioFormat.SampleFormat.UInt8: 1,
+                    QAudioFormat.SampleFormat.Int16: 2,
+                    QAudioFormat.SampleFormat.Int32: 4,
+                    QAudioFormat.SampleFormat.Float: 4,
+                }.get(audio_format.sampleFormat(), 2)
+                bytes_per_frame = bytes_per_sample * max(1, audio_format.channelCount())
+            bytes_per_chunk = self.chunk_size * bytes_per_frame
+            pending_audio_bytes = bytearray()
             
             # Start the analysis worker thread that consumes raw samples and produces Sound objects
             self.analysis_thread = threading.Thread(target=self.analyze_worker, daemon=True)
@@ -140,51 +187,92 @@ class AudioProcessor(threading.Thread):
             logger.info("Analysis worker thread started")
             
             # Open an audio input stream from the specified or default microphone
-            self.stream = self.port.open(
-                format=pyaudio.paInt16,  # 16-bit integer samples (standard for audio)
-                channels=1,  # Mono audio (single channel)
-                rate=self.sample_rate,  # Sampling rate in Hz
-                input=True,  # This is an input (recording) stream
-                input_device_index=self.input_device_index,  # Device index (None=default)
-                frames_per_buffer=self.chunk_size  # Number of samples to read at once
-            )
+            self.port = QAudioSource(input_device, audio_format)
+            self.port.setBufferSize(max(bytes_per_chunk * 8, 4096))
+            self.stream = self.port.start()
+            if self.stream is None:
+                raise RuntimeError("Failed to open audio input stream")
             
             logger.info(f"Audio stream opened: {self.sample_rate}Hz, {self.chunk_size} chunk size")
             
             # Main capture loop - runs until self.running is set to False
             while self.running:
-                # Read audio data from the microphone
-                # exception_on_overflow=False prevents crashes if buffer overflows
-                data = self.stream.read(self.chunk_size, exception_on_overflow=False)
-                # Convert raw bytes to numpy array of 16-bit integers
-                samples = np.frombuffer(data, dtype=np.int16)
+                # Is audio available?
+                available = self.stream.bytesAvailable()
+                if available <= 0:
+                    time.sleep(0.001)
+                    continue
                 
-                # Normalize to [-1.0, 1.0]
-                normalized_samples = samples.astype(np.float32) / 32768.0
+                # If audio is available, read it into a bytearray buffer. We may get more than one chunk's worth of audio, 
+                # so we need to buffer it until we have enough for at least one chunk.
+                data = self.stream.read(available)
+                if not data:
+                    time.sleep(0.001)
+                    continue
                 
-                # Try to add normalized samples to the raw queue for analysis
-                try:
-                    # timeout=0.1 prevents infinite blocking if queue is full
-                    self.raw_samples_queue.put(normalized_samples, timeout=0.1)
-                except queue.Full:
-                    # Queue is full - drop this frame and log a warning
-                    # This happens if analysis is slower than audio capture
-                    logger.warning("Raw samples queue full, dropping frame")
+                # Append new audio bytes to the pending buffer and process in chunk-sized pieces
+                pending_audio_bytes.extend(bytes(data))
 
-                # If recording is enabled, save raw int16 samples to buffer
-                if self.recording_enabled:
-                    # Use lock to prevent concurrent access to recording buffer
-                    with self.recording_lock:
-                        # Append int16 samples to the raw recording list
-                        self.raw_recording.extend(samples)
+                # Process pending audio bytes in chunks until we have less than one chunk left
+                while len(pending_audio_bytes) >= bytes_per_chunk:
+
+                    # Extract the next chunk of audio bytes for processing and remove it from the pending buffer
+                    raw_chunk = bytes(pending_audio_bytes[:bytes_per_chunk])
+                    del pending_audio_bytes[:bytes_per_chunk]
+
+                    # Interpret raw audio bytes according to the sample format 
+                    # and convert to normalized float32 samples
+                    sample_format = audio_format.sampleFormat()
+                    channels = max(1, audio_format.channelCount())
+
+                    # Convert raw bytes to numpy array of the appropriate dtype based on sample format
+                    # Then normalize to float32 in range [-1.0, 1.0] for analysis. Also keep raw int16 samples for recording.
+                    if sample_format == QAudioFormat.SampleFormat.Int16:
+                        raw = np.frombuffer(raw_chunk, dtype=np.int16)
+                        normalized_samples = raw.astype(np.float32) / 32768.0
+                        samples = raw
+                    elif sample_format == QAudioFormat.SampleFormat.Int32:
+                        raw = np.frombuffer(raw_chunk, dtype=np.int32)
+                        normalized_samples = raw.astype(np.float32) / 2147483648.0
+                        samples = np.clip(normalized_samples * 32767.0, -32768, 32767).astype(np.int16)
+                    elif sample_format == QAudioFormat.SampleFormat.UInt8:
+                        raw = np.frombuffer(raw_chunk, dtype=np.uint8)
+                        normalized_samples = (raw.astype(np.float32) - 128.0) / 128.0
+                        samples = np.clip(normalized_samples * 32767.0, -32768, 32767).astype(np.int16)
+                    elif sample_format == QAudioFormat.SampleFormat.Float:
+                        raw = np.frombuffer(raw_chunk, dtype=np.float32)
+                        normalized_samples = np.clip(raw.astype(np.float32), -1.0, 1.0)
+                        samples = np.clip(normalized_samples * 32767.0, -32768, 32767).astype(np.int16)
+                    else:
+                        raise RuntimeError(f"Unsupported audio sample format: {sample_format}")
+
+                    # If the audio is stereo, we take only the first channel for analysis and recording to keep it simple.                    
+                    if channels > 1:
+                        normalized_samples = normalized_samples.reshape(-1, channels)[:, 0]
+                        samples = samples.reshape(-1, channels)[:, 0]
+                
+                    # Try to add normalized samples to the raw queue for analysis
+                    try:
+                        # timeout=0.1 prevents infinite blocking if queue is full
+                        self.raw_samples_queue.put(normalized_samples, timeout=0.1)
+                    except queue.Full:
+                        # Queue is full - drop this frame and log a warning
+                        # This happens if analysis is slower than audio capture
+                        logger.warning("Raw samples queue full, dropping frame")
+
+                    # If recording is enabled, save raw int16 samples to buffer
+                    if self.recording_enabled:
+                        # Use lock to prevent concurrent access to recording buffer
+                        with self.recording_lock:
+                            # Append int16 samples to the raw recording list
+                            self.raw_recording.extend(samples)
                     
-        except pyaudio.PyAudioError as e:
-            # Handle PyAudio-specific errors (device not found, format not supported, etc.)
-            logger.error(f"PyAudio error: {e}")
-            self.running = False
         except RuntimeError as e:
             # Handle runtime errors (e.g., no audio devices)
             logger.error(f"Runtime error: {e}")
+            self.running = False
+        except Exception as e:
+            logger.error(f"Audio capture error: {e}")
             self.running = False
         finally:
             # Always clean up resources, even if an error occurred
@@ -192,15 +280,14 @@ class AudioProcessor(threading.Thread):
 
     def _cleanup(self):
         """
-        Clean up audio resources (stream and PyAudio instance) properly.
+        Clean up audio resources (stream and QAudioSource instance) properly.
         Ensures that resources are released even if an error occurs.
         """
         try:
-            if self.stream:
-                self.stream.stop_stream()
-                self.stream.close()
             if self.port:
-                self.port.terminate()
+                self.port.stop()
+            self.stream = None
+            self.port = None
             logger.info("Audio stream closed")
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
