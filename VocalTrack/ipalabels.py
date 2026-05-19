@@ -114,6 +114,9 @@ class IPALabels:
         if csv_path is None:
             # Look for the "templates" folder sitting next to the .exe
             csv_path = get_external_path(os.path.join("templates", "vowel_template.csv"))
+
+        # Store active CSV path so runtime edits can be persisted by keyboard shortcut.
+        self.csv_path = csv_path
       
 
         # Parse CSV to get template vowels and their F1/F2 positions
@@ -128,6 +131,57 @@ class IPALabels:
         
         # Create buttons and labels for ALL 30 available images
         self._create_buttons_and_labels()
+
+    def save_current_template(self, csv_path=None):
+        """Persist the current green IPA template toggles and positions to CSV.
+
+        The first 30 buttons/labels are the green template set. Any green label whose
+        button is currently toggled on is written to the template with its current F1/F2
+        position in Hz.
+
+        Args:
+            csv_path (str, optional): Output template path. Defaults to active template file.
+
+        Returns:
+            tuple: (success: bool, output_path: str, saved_count: int)
+        """
+        output_path = csv_path or self.csv_path
+        rows_to_save = []
+
+        # First 30 entries are always the green/template set.
+        for idx in range(30):
+            button = self.buttons[idx]
+            textbox = self.textboxes[idx]
+            if not button.clicked:
+                continue
+
+            image_num = idx + 1
+            # Use stored Hz values when available; otherwise derive from current pixel location.
+            if textbox.f1 is not None and textbox.f2 is not None:
+                f1_hz, f2_hz = textbox.f1, textbox.f2
+            else:
+                f1_hz, f2_hz = self._pixels_to_hz(textbox.rect.x, textbox.rect.y)
+
+            rows_to_save.append([image_num, f"{f1_hz:.2f}", f"{f2_hz:.2f}", ""])
+
+        try:
+            # Create target directory if needed (safe when it already exists).
+            output_dir = os.path.dirname(output_path)
+            if output_dir:
+                os.makedirs(output_dir, exist_ok=True)
+
+            with open(output_path, 'w', encoding='utf-8', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerows(rows_to_save)
+        except OSError:
+            return False, output_path, len(rows_to_save)
+
+        # Refresh in-memory template state so Ctrl+T uses the newly saved set.
+        self.csv_path = output_path
+        self.template_data = self._load_csv(output_path)
+        self.template_image_nums = {v['image_num'] for v in self.template_data}
+
+        return True, output_path, len(rows_to_save)
 
     def _load_csv(self, csv_path):
         """Load vowel data from CSV file.
