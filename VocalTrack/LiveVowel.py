@@ -121,6 +121,8 @@ class LiveVowel(BaseAudioVisualizer):
         self.display_mode = self.gui_info.get('display_mode', 'single')
         # Frequency scale for axis display ("log" or "linear")
         self.freq_scale = self.gui_info.get('freq_scale', 'log')
+        # Toggle for drawing a connector line between exactly two visible IPA labels.
+        self.show_ipa_connector = False
         # Track the current track number from smoother to detect when new tracks begin
         self.current_track_number = 0  # Matches smoother's initial track_number
         # Track whether a valid point was created in the current frame
@@ -240,6 +242,22 @@ class LiveVowel(BaseAudioVisualizer):
                 self.ipalabels.scale_formants_log(-0.01)
             else:
                 self.ipalabels.scale_formants(0.99)
+
+        # Draw connector between two visible IPA labels (when toggled on with L).
+        self.draw_ipa_connector_line()
+
+    def draw_ipa_connector_line(self):
+        """Draw a line between IPA labels when exactly two are visible and toggle is enabled."""
+        if not self.show_ipa_connector or self.state != "recording":
+            return
+
+        visible_labels = [txtbx for txtbx in self.ipalabels.textboxes if txtbx.visible]
+        if len(visible_labels) != 2:
+            return
+
+        start = visible_labels[0].rect.center
+        end = visible_labels[1].rect.center
+        pygame.draw.line(self.screen, (40, 40, 40), start, end, 3)
                     
 
     def run_points(self, state, track_type="single"):
@@ -401,11 +419,16 @@ class LiveVowel(BaseAudioVisualizer):
             help_status = "shown" if self.show_help else "hidden"
             logger.debug(f"Help overlay {help_status}")
 
-        # Check if user pressed L to toggle log/linear frequency scale
+        # Check if user pressed L to toggle connector line between exactly two IPA labels.
         if self.event_holder.l_key:
-            self.freq_scale = 'linear' if self.freq_scale == 'log' else 'log'
-            scale_status = "logarithmic" if self.freq_scale == 'log' else "linear"
-            logger.info(f"Frequency scale toggled to {scale_status}")
+            visible_labels = [txtbx for txtbx in self.ipalabels.textboxes if txtbx.visible]
+            if len(visible_labels) == 2:
+                self.show_ipa_connector = not self.show_ipa_connector
+                line_status = "on" if self.show_ipa_connector else "off"
+                logger.info(f"IPA connector line toggled {line_status}")
+            else:
+                self.show_ipa_connector = False
+                logger.info("IPA connector requires exactly 2 visible labels")
 
         # Handle +/- keys to adjust minimum RMS threshold
         if self.event_holder.plus_equals:
@@ -755,6 +778,7 @@ class LiveVowel(BaseAudioVisualizer):
             "CTRL+V - Toggle recording/menu mode",
             "CTRL+T - Toggle template vowels on/off",
             "CTRL+S - Save current template labels/positions",
+            "L      - Toggle line between exactly two visible IPA labels",
             "+/-    - Adjust minimum RMS threshold",
             "Backspace - Undo last track",
             "Delete - Clear all tracks",

@@ -47,7 +47,7 @@ class EventHolder:
         self.ctrl_t = None            # Ctrl+T pressed (toggle template vowels)
         self.space_down = None        # Space pressed (start recording)
         self.space_up = None          # Space released (stop recording)
-        self.l_key = None             # L pressed (toggle log/linear frequency scale)
+        self.l_key = None             # L pressed (toggle IPA connector line when exactly two labels are visible)
 
         # Parse all events and set attributes for relevant ones
         for event in self.events:
@@ -127,7 +127,7 @@ class EventHolder:
                     # H pressed (toggle help)
                     self.h_key = event
                 elif event.key == pygame.K_l:
-                    # L pressed (toggle log/linear frequency scale)
+                    # L pressed (toggle IPA connector line)
                     self.l_key = event
                 elif event.key == pygame.K_SPACE:
                     # Space pressed (start recording)
