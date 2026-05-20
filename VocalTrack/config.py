@@ -45,6 +45,18 @@ LIVEPITCH_CONFIG = {
     'freq_scale': 'log',  # Frequency axis scale: 'log' or 'linear'
 }
 
+# GUI - LivePower
+LIVEPOWER_CONFIG = {
+    'gui_width': 850,
+    'gui_height': 500,
+    'min_db': -90.0,
+    'max_db': 0.0,
+    'fps': 60,
+    'power_plot_mode': 'fixed',  # 'fixed' or 'continuous'
+    'power_display_seconds': 5.0,  # Display window width in seconds
+    'smoothing': 0.35,  # Exponential smoothing amount (0-1)
+}
+
 # GUI - LiveSpectrogram
 LIVESPECTROGRAM_CONFIG = {
     'gui_width': 1200,  # Display window width in pixels (typical: 1200 for widescreen)
