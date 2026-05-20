@@ -232,6 +232,8 @@ class LauncherWindow(QMainWindow):
         self.start_pitch_btn = self._create_launch_btn("LivePitch", "#2196F3", "#1e88e5", lambda: self._launch_module(LivePitch, "LivePitch", "pitch"))
         # Create the red button to start the LivePower tool
         self.start_power_btn = self._create_launch_btn("LivePower", "#d14b3d", "#b63d31", lambda: self._launch_module(LivePower, "LivePower", "power"))
+        # Create a gray placeholder button for future univariate measures
+        self.start_measure_btn = self._create_launch_btn("LiveMeasure", "#607D8B", "#546E7A", lambda: None)
         # Create the purple button to start the LiveSpectrogram tool (and tell it it needs extra information to run)
         self.start_spectrogram_btn = self._create_launch_btn("LiveSpectrogram", "#9C27B0", "#7B1FA2", lambda: self._launch_module(LiveSpectrogram, "LiveSpectrogram", "spectrogram"))
         # Create the orange button to start the LiveSpectrum tool (and tell it it needs extra information to run)
@@ -241,12 +243,14 @@ class LauncherWindow(QMainWindow):
         launch_layout.addWidget(self.start_vowel_btn, 0, 0)
         # Place the blue button in the top right
         launch_layout.addWidget(self.start_pitch_btn, 0, 1)
-        # Place the red button across the middle row
-        launch_layout.addWidget(self.start_power_btn, 1, 0, 1, 2)
-        # Place the purple button in the bottom left
-        launch_layout.addWidget(self.start_spectrogram_btn, 2, 0)
-        # Place the orange button in the bottom right
-        launch_layout.addWidget(self.start_spectrum_btn, 2, 1)
+        # Place the purple button in the middle left
+        launch_layout.addWidget(self.start_spectrogram_btn, 1, 0)
+        # Place the orange button in the middle right
+        launch_layout.addWidget(self.start_spectrum_btn, 1, 1)
+        # Place the red button in the bottom left
+        launch_layout.addWidget(self.start_power_btn, 2, 0)
+        # Place the gray placeholder button in the bottom right
+        launch_layout.addWidget(self.start_measure_btn, 2, 1)
         # Add this grid of launch buttons to the very bottom of the main vertical stack
         main_layout.addLayout(launch_layout)
         
@@ -627,7 +631,7 @@ class LauncherWindow(QMainWindow):
     def _set_launch_buttons_enabled(self, state: bool):
         """Turns the big launch buttons on or off."""
         # Loop through all launch buttons
-        for btn in (self.start_vowel_btn, self.start_pitch_btn, self.start_power_btn, self.start_spectrogram_btn, self.start_spectrum_btn):
+        for btn in (self.start_vowel_btn, self.start_pitch_btn, self.start_power_btn, self.start_measure_btn, self.start_spectrogram_btn, self.start_spectrum_btn):
             # Turn it on (True) or off (False)
             btn.setEnabled(state)
 
