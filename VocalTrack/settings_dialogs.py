@@ -409,6 +409,46 @@ class PitchPlotSettingsDialog(BaseSettingsDialog):
         }
 
 
+class PowerPlotSettingsDialog(BaseSettingsDialog):
+    """Popup window for adjusting the real-time power/intensity graph."""
+    def __init__(self, parent=None):
+        super().__init__("Power Plotting Settings", parent)
+
+        mgr = settings_manager.get_settings_manager()
+        saved = mgr.get('power_plot', {})
+
+        self.min_db_input = QLineEdit(str(saved.get('min_db', config.LIVEPOWER_CONFIG.get('min_db', -90.0))))
+        self.form.addRow("Min Intensity (dBFS):", self.min_db_input)
+
+        self.max_db_input = QLineEdit(str(saved.get('max_db', config.LIVEPOWER_CONFIG.get('max_db', 0.0))))
+        self.form.addRow("Max Intensity (dBFS):", self.max_db_input)
+
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["Fixed Time", "Continuous Scroll"])
+        current_mode = saved.get('power_plot_mode', config.LIVEPOWER_CONFIG.get('power_plot_mode', 'fixed'))
+        self.mode_combo.setCurrentIndex(0 if current_mode == 'fixed' else 1)
+        self.form.addRow("Plot Mode:", self.mode_combo)
+
+        self.window_width_input = QLineEdit(str(saved.get('power_display_seconds', config.LIVEPOWER_CONFIG.get('power_display_seconds', 5.0))))
+        self.form.addRow("Display Window (seconds):", self.window_width_input)
+
+        self.fps_input = QLineEdit(str(saved.get('fps', config.LIVEPOWER_CONFIG.get('fps', 60))))
+        self.form.addRow("FPS:", self.fps_input)
+
+        self.smoothing_input = QLineEdit(str(saved.get('smoothing', config.LIVEPOWER_CONFIG.get('smoothing', 0.35))))
+        self.form.addRow("Smoothing (0-1):", self.smoothing_input)
+
+    def get_settings(self):
+        return {
+            'min_db': float(self.min_db_input.text()),
+            'max_db': float(self.max_db_input.text()),
+            'power_plot_mode': "fixed" if self.mode_combo.currentIndex() == 0 else "continuous",
+            'power_display_seconds': float(self.window_width_input.text()),
+            'fps': int(self.fps_input.text()),
+            'smoothing': float(self.smoothing_input.text()),
+        }
+
+
 
 class SpectrogramSettingsDialog(BaseSettingsDialog):
     """Popup window for adjusting the colorful scrolling audio heatmap (Spectrogram)."""
