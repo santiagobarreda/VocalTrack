@@ -28,8 +28,14 @@ def __getattr__(name):
 		from .LivePitch import LivePitch
 		# Return the LivePitch class object
 		return LivePitch
+	# Check if requested attribute is "LivePower"
+	elif name == "LivePower":
+		# Import LivePower class from LivePower module (deferred until first use)
+		from .LivePower import LivePower
+		# Return the LivePower class object
+		return LivePower
 	# If attribute name doesn't match known exports, raise standard attribute error
 	raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # Define public API - list of names that should be exported from this module
-__all__ = ["LiveVowel", "LivePitch", "config"]
+__all__ = ["LiveVowel", "LivePitch", "LivePower", "config"]
