@@ -355,12 +355,16 @@ class LivePitch(BaseAudioVisualizer):
                 chunk_ms = self.audio_config.get('chunk_ms', 25)
                 number_of_chunks = self.audio_config.get('number_of_chunks', 2)
                 window_ms = chunk_ms * number_of_chunks
+                # Use the audio processor's actual sample rate (may differ from the requested
+                # rate if the device negotiated a different format, e.g. 44100 Hz instead of 10000 Hz)
+                actual_rate = self.audio_processor.sample_rate
+                self.sample_rate = actual_rate  # Keep in sync so WAV export uses correct rate
                 window_samples = int(round(  # Window size in samples
-                    self.audio_config['sample_rate'] * (window_ms / 1000)  # Convert ms to samples
+                    actual_rate * (window_ms / 1000)  # Convert ms to samples
                 ))  # End window sample calc
                 elapsed_time = max(  # Compute elapsed time
                     0.0,  # Clamp at zero
-                    (recorded_count - (window_samples / 2)) / self.audio_config['sample_rate']  # Center window time
+                    (recorded_count - (window_samples / 2)) / actual_rate  # Center window time
                 )  # End elapsed time calc
 
                 if not self.started:  # Waiting for sustained voicing

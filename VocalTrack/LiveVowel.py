@@ -300,15 +300,17 @@ class LiveVowel(BaseAudioVisualizer):
                 recorded_count = 0
             # Calculate analysis window size in samples
             # Window is chunk_ms * number_of_chunks
+            # Use actual device sample rate in case it differs from the requested rate
+            actual_rate = self.audio_processor.sample_rate
             window_ms = self.audio_config.get('chunk_ms', 5) * self.audio_config.get('number_of_chunks', 5)
             window_samples = int(round(
-                self.audio_config['sample_rate'] * (window_ms / 1000)
+                actual_rate * (window_ms / 1000)
             ))
             # Calculate elapsed recording time, adjusted for window center
             # Subtract half window to align timestamp with center of analysis window
             elapsed_time = max(
                 0.0,  # Never negative
-                (recorded_count - (window_samples / 2)) / self.audio_config['sample_rate']
+                (recorded_count - (window_samples / 2)) / actual_rate
             )
             
             # Apply smoothing filter to formant values
@@ -637,7 +639,7 @@ class LiveVowel(BaseAudioVisualizer):
                 wav_file = f"{base_path}.wav"
                 # Call exporter utility to write 16-bit mono WAV file
                 exporter.save_wav(wav_file, numpy.array(self.audio_buffer), 
-                                self.audio_config['sample_rate'])
+                                self.audio_processor.sample_rate if self.audio_processor else self.audio_config.get('sample_rate', 10000))
                 # Log successful export to console/log file
                 logger.info(f"Audio saved to {wav_file}")
             
