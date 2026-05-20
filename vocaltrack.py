@@ -231,9 +231,9 @@ class LauncherWindow(QMainWindow):
         # Create the blue button to start the LivePitch tool
         self.start_pitch_btn = self._create_launch_btn("LivePitch", "#2196F3", "#1e88e5", lambda: self._launch_module(LivePitch, "LivePitch", "pitch"))
         # Create the red button to start the LivePower tool
-        self.start_power_btn = self._create_launch_btn("LivePower", "#d14b3d", "#b63d31", lambda: self._launch_module(LivePower, "LivePower", "power"))
+        self.start_power_btn = self._create_launch_btn("LivePower", "#9EA194", "#959B80", lambda: self._launch_module(LivePower, "LivePower", "power"))
         # Create a gray placeholder button for future univariate measures
-        self.start_measure_btn = self._create_launch_btn("LiveMeasure", "#607D8B", "#546E7A", lambda: None)
+        self.start_measure_btn = self._create_launch_btn("LiveMeasure", "#bc3775", "#9d2c61", lambda: None)
         # Create the purple button to start the LiveSpectrogram tool (and tell it it needs extra information to run)
         self.start_spectrogram_btn = self._create_launch_btn("LiveSpectrogram", "#9C27B0", "#7B1FA2", lambda: self._launch_module(LiveSpectrogram, "LiveSpectrogram", "spectrogram"))
         # Create the orange button to start the LiveSpectrum tool (and tell it it needs extra information to run)
