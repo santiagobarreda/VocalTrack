@@ -3,7 +3,7 @@ import threading
 # Import queue for thread-safe communication between audio capture/analysis threads and the main thread
 import queue
 # Import Qt core app and QtMultimedia audio capture APIs
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtCore import QCoreApplication, QThread
 from PySide6.QtMultimedia import QAudioFormat, QAudioSource, QMediaDevices
 # Import numpy for efficient numerical array operations on audio samples
 import numpy as np
@@ -26,7 +26,7 @@ except (ImportError, AttributeError):
 logger = logging.getLogger(__name__)
 
 
-class AudioProcessor(threading.Thread):
+class AudioProcessor(QThread):
     """
     Continuously captures audio from the system microphone and queues samples for analysis.
 
@@ -56,10 +56,8 @@ class AudioProcessor(threading.Thread):
             raw_queue_maxsize (int, optional): Maximum size for raw samples queue. Defaults to 50.
             analyzed_queue_maxsize (int, optional): Maximum size for analyzed sounds queue. Defaults to 50.
         """
-        # Initialize the parent Thread class
+        # Initialize the parent QThread class
         super(AudioProcessor, self).__init__()
-        # Set as daemon thread so it automatically terminates when main program exits
-        self.daemon = True
         
         # ALWAYS calculate sample rate as 2×max_formant (Nyquist theorem)
         # There is no reason to sample faster than 2× the highest frequency we want to analyze
@@ -297,10 +295,9 @@ class AudioProcessor(threading.Thread):
         Stop the audio processor thread gracefully and wait for it to terminate.
         """
         self.running = False
-        try:
-            self.join(timeout=2)
-        except RuntimeError:
-            logger.warning("Audio processor thread did not respond to stop signal")
+        if self.isRunning():
+            if not self.wait(2000):
+                logger.warning("Audio processor thread did not respond to stop signal")
 
     def analyze_worker(self):
         """
