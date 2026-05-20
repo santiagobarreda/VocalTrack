@@ -85,6 +85,9 @@ def get_spectrum(audio_chunk: np.ndarray,
     windowed = window * gaussian_window_normalized
 
     # Zero-pad from end of signal to nfft length
+    # Safety: nfft must always be >= the windowed signal length to avoid broadcast errors
+    # when the device sample rate differs from the originally requested rate.
+    nfft = max(nfft, len(windowed))
     signal = np.zeros(nfft, dtype=np.float32)
     signal[:len(windowed)] = windowed
 
