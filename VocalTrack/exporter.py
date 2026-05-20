@@ -131,6 +131,30 @@ def save_pitch_csv(filename, pitch_data, min_f0=None, max_f0=None):
                 writer.writerow(row)
 
 
+def save_power_csv(filename, power_data):
+    """Save timestamped power/intensity analyses to CSV.
+
+    Args:
+        filename (str): Output CSV filename
+        power_data (list): List of dicts with keys:
+            'time_ms', 'intensity_db', optionally 'track'
+    """
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+
+    if not power_data:
+        return
+
+    columns = ['time_ms', 'intensity_db']
+    if any('track' in row for row in power_data):
+        columns = ['track'] + columns
+
+    with open(filename, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=columns)
+        writer.writeheader()
+        for row in power_data:
+            writer.writerow(row)
+
+
 def create_session_name(speaker_id='unknown'):
     """Generate session name with timestamp.
     
