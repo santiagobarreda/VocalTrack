@@ -27,6 +27,7 @@ from PySide6.QtGui import QPixmap
 # Bring in the actual visualization programs that this launcher will open
 from VocalTrack.LiveVowel import LiveVowel
 from VocalTrack.LivePitch import LivePitch
+from VocalTrack.LivePower import LivePower
 from VocalTrack.LiveSpectrogram import LiveSpectrogram
 from VocalTrack.LiveSpectrum import LiveSpectrum
 
@@ -38,7 +39,7 @@ from VocalTrack import settings_manager
 # Bring in the popup windows we created in the other file for the user to change settings
 from VocalTrack.settings_dialogs import (
     AnalysisSettingsDialog, SmootherSettingsDialog, PlottingSettingsDialog,
-    PitchPlotSettingsDialog, SpectrogramSettingsDialog, SpectrumSettingsDialog,
+    PitchPlotSettingsDialog, PowerPlotSettingsDialog, SpectrogramSettingsDialog, SpectrumSettingsDialog,
     RecordingSettingsDialog
 )
 from VocalTrack.ipalabels import get_resource_path
@@ -213,6 +214,8 @@ class LauncherWindow(QMainWindow):
         self._add_settings_btn(settings_layout, "Spectrogram Settings", self.open_spectrogram_settings, 2, 1)
         # Add the 'Spectrum Settings' button at the bottom right
         self._add_settings_btn(settings_layout, "Spectrum Settings", self.open_spectrum_settings, 3, 1)
+        # Add the 'Power Plot Settings' button below the others
+        self._add_settings_btn(settings_layout, "Power Plot Settings", self.open_power_plot_settings, 4, 1)
         
         # Apply the grid of buttons to the grouping box
         settings_group.setLayout(settings_layout)
@@ -226,20 +229,24 @@ class LauncherWindow(QMainWindow):
         # Create the green button to start the LiveVowel tool
         self.start_vowel_btn = self._create_launch_btn("LiveVowel", "#4CAF50", "#45a049", lambda: self._launch_module(LiveVowel, "LiveVowel"))
         # Create the blue button to start the LivePitch tool
-        self.start_pitch_btn = self._create_launch_btn("LivePitch", "#2196F3", "#1e88e5", lambda: self._launch_module(LivePitch, "LivePitch"))
+        self.start_pitch_btn = self._create_launch_btn("LivePitch", "#2196F3", "#1e88e5", lambda: self._launch_module(LivePitch, "LivePitch", "pitch"))
+        # Create the red button to start the LivePower tool
+        self.start_power_btn = self._create_launch_btn("LivePower", "#d14b3d", "#b63d31", lambda: self._launch_module(LivePower, "LivePower", "power"))
         # Create the purple button to start the LiveSpectrogram tool (and tell it it needs extra information to run)
-        self.start_spectrogram_btn = self._create_launch_btn("LiveSpectrogram", "#9C27B0", "#7B1FA2", lambda: self._launch_module(LiveSpectrogram, "LiveSpectrogram", True))
+        self.start_spectrogram_btn = self._create_launch_btn("LiveSpectrogram", "#9C27B0", "#7B1FA2", lambda: self._launch_module(LiveSpectrogram, "LiveSpectrogram", "spectrogram"))
         # Create the orange button to start the LiveSpectrum tool (and tell it it needs extra information to run)
-        self.start_spectrum_btn = self._create_launch_btn("LiveSpectrum", "#e07319", "#c76412", lambda: self._launch_module(LiveSpectrum, "LiveSpectrum", True))
+        self.start_spectrum_btn = self._create_launch_btn("LiveSpectrum", "#e07319", "#c76412", lambda: self._launch_module(LiveSpectrum, "LiveSpectrum", "spectrum"))
         
         # Place the green button in the top left of the launch grid
         launch_layout.addWidget(self.start_vowel_btn, 0, 0)
         # Place the blue button in the top right
         launch_layout.addWidget(self.start_pitch_btn, 0, 1)
+        # Place the red button across the middle row
+        launch_layout.addWidget(self.start_power_btn, 1, 0, 1, 2)
         # Place the purple button in the bottom left
-        launch_layout.addWidget(self.start_spectrogram_btn, 1, 0)
+        launch_layout.addWidget(self.start_spectrogram_btn, 2, 0)
         # Place the orange button in the bottom right
-        launch_layout.addWidget(self.start_spectrum_btn, 1, 1)
+        launch_layout.addWidget(self.start_spectrum_btn, 2, 1)
         # Add this grid of launch buttons to the very bottom of the main vertical stack
         main_layout.addLayout(launch_layout)
         
@@ -257,6 +264,7 @@ class LauncherWindow(QMainWindow):
         self.smoother_settings = {}
         self.plotting_settings = {}
         self.pitch_plot_settings = {}
+        self.power_plot_settings = {}
         self.spectrogram_settings = {}
         self.spectrum_settings = {}
         self.recording_settings = {}
@@ -313,6 +321,8 @@ class LauncherWindow(QMainWindow):
         if saved := mgr.get('plotting', {}): self.plotting_settings = saved
         # If there are saved pitch settings, put them in our memory folder
         if saved := mgr.get('pitch_plot', {}): self.pitch_plot_settings = saved
+        # If there are saved power settings, put them in our memory folder
+        if saved := mgr.get('power_plot', {}): self.power_plot_settings = saved
         # If there are saved spectrogram settings, put them in our memory folder
         if saved := mgr.get('spectrogram', {}): self.spectrogram_settings = saved
         # If there are saved spectrum settings, put them in our memory folder
@@ -362,6 +372,13 @@ class LauncherWindow(QMainWindow):
         if dialog.exec() == QDialog.Accepted:
             self.pitch_plot_settings = dialog.get_settings()
             # Apply and save settings immediately
+            self.apply_settings()
+
+    def open_power_plot_settings(self):
+        """Opens the Power Plot popup and saves choices if user clicks OK."""
+        dialog = PowerPlotSettingsDialog(self)
+        if dialog.exec() == QDialog.Accepted:
+            self.power_plot_settings = dialog.get_settings()
             self.apply_settings()
     
     def open_spectrogram_settings(self):
@@ -575,6 +592,13 @@ class LauncherWindow(QMainWindow):
             config.LIVEPITCH_CONFIG.update(self.pitch_plot_settings)
             # Command the system to memorize them
             mgr.set('pitch_plot', self.pitch_plot_settings)
+
+        # If the user changed power plot settings...
+        if self.power_plot_settings:
+            # Push them into the global brain
+            config.LIVEPOWER_CONFIG.update(self.power_plot_settings)
+            # Command the system to memorize them
+            mgr.set('power_plot', self.power_plot_settings)
         
         # If the user changed spectrogram settings...
         if self.spectrogram_settings:
@@ -601,13 +625,13 @@ class LauncherWindow(QMainWindow):
         mgr.save()
 
     def _set_launch_buttons_enabled(self, state: bool):
-        """Turns the four big launch buttons on or off."""
-        # Loop through all four buttons
-        for btn in (self.start_vowel_btn, self.start_pitch_btn, self.start_spectrogram_btn, self.start_spectrum_btn):
+        """Turns the big launch buttons on or off."""
+        # Loop through all launch buttons
+        for btn in (self.start_vowel_btn, self.start_pitch_btn, self.start_power_btn, self.start_spectrogram_btn, self.start_spectrum_btn):
             # Turn it on (True) or off (False)
             btn.setEnabled(state)
 
-    def _launch_module(self, module_class, name, needs_extra_args=False):
+    def _launch_module(self, module_class, name, config_kind=None):
         """Starts one of the visualization programs when the user clicks a launch button."""
         # First, force all user settings to apply to the global brain
         self.apply_settings()
@@ -624,17 +648,32 @@ class LauncherWindow(QMainWindow):
             analysis_cfg = config.ANALYSIS_CONFIG.copy()
             
             # Check if this specific program requires extra information to run
-            if needs_extra_args:
-                # Figure out which configuration file to pass it based on its name
-                cfg = config.LIVESPECTROGRAM_CONFIG if "Spectrogram" in name else config.LIVESPECTRUM_CONFIG
-                # Figure out which user overrides to pass it based on its name
-                user_cfg = self.spectrogram_settings if "Spectrogram" in name else self.spectrum_settings
-                
-                # Start the program with isolated configs
+            if config_kind == "spectrogram":
                 module_class(
-                    spec_config=dict(cfg, **user_cfg), 
+                    spec_config=dict(config.LIVESPECTROGRAM_CONFIG, **self.spectrogram_settings), 
                     audio_config=audio_cfg, 
                     analysis_config=analysis_cfg, 
+                    input_device_index=self.audio_input_device
+                )
+            elif config_kind == "spectrum":
+                module_class(
+                    spec_config=dict(config.LIVESPECTRUM_CONFIG, **self.spectrum_settings), 
+                    audio_config=audio_cfg, 
+                    analysis_config=analysis_cfg, 
+                    input_device_index=self.audio_input_device
+                )
+            elif config_kind == "pitch":
+                module_class(
+                    pitch_config=dict(config.LIVEPITCH_CONFIG, **self.pitch_plot_settings),
+                    audio_config=audio_cfg,
+                    analysis_config=analysis_cfg,
+                    input_device_index=self.audio_input_device
+                )
+            elif config_kind == "power":
+                module_class(
+                    power_config=dict(config.LIVEPOWER_CONFIG, **self.power_plot_settings),
+                    audio_config=audio_cfg,
+                    analysis_config=analysis_cfg,
                     input_device_index=self.audio_input_device
                 )
             else:
@@ -670,6 +709,7 @@ def main():
     # Check if we have saved settings. If yes, immediately apply them to the global brain
     if analysis := mgr.get('analysis'): config.ANALYSIS_CONFIG.update(analysis)
     if pitch := mgr.get('pitch_plot'): config.LIVEPITCH_CONFIG.update(pitch)
+    if power := mgr.get('power_plot'): config.LIVEPOWER_CONFIG.update(power)
     if plot := mgr.get('plotting'): config.LIVEVOWEL_CONFIG.update(plot)
     if spec := mgr.get('spectrogram'): config.LIVESPECTROGRAM_CONFIG.update(spec)
     if spectrum := mgr.get('spectrum'): config.LIVESPECTRUM_CONFIG.update(spectrum)
