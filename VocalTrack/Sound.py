@@ -116,6 +116,7 @@ class Sound:
         self.f2 = 0   # Second formant frequency in Hz
         self.f3 = 0   # Third formant frequency in Hz
         self.voicing = 0  # Voicing status (0 = unvoiced, 1 = voiced)
+        self.rms_db = -999.0  # Frame power/intensity in dBFS
         self.analysis_timestamp = None  # Timestamp for when analysis finished (perf_counter seconds)
         self.capture_timestamp = None   # Timestamp for when the analysis window was captured (perf_counter seconds)
 
@@ -179,6 +180,7 @@ class Sound:
 
             # Store voicing and f0 from standardized estimator
             self.voicing = bool(pitch_res.get('voiced', False))
+            self.rms_db = float(pitch_res.get('rms_db', -999.0))
             f0val = pitch_res.get('f0')
             self.f0 = int(f0val) if (f0val is not None and not np.isnan(f0val)) else 0            
 
