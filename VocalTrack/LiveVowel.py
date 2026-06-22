@@ -112,7 +112,7 @@ class LiveVowel(BaseAudioVisualizer):
         self.voweltemplate = voweltemplate.VowelTemplate(self.screen, self.gui_info)  # Vowel chart template
 
         # Application state
-        self.state = "recording"  # Start in recording mode
+        self.state = "menu"  # Start with recording disabled until explicitly toggled
         # Flag to toggle green template IPA symbols (from template) on/off (Ctrl+T)
         # When True, all template vowels are shown; when False, they are hidden (but can be toggled individually in menu)
         self.show_template = True  # Start with template visible
@@ -132,6 +132,7 @@ class LiveVowel(BaseAudioVisualizer):
         self.session_name = exporter.create_session_name('speaker')
         self.recording_start_time = None  # Will be set when first frame is captured
         self.audio_buffer = []  # Raw audio samples for WAV export
+        self.recording_sample_rate = self.audio_config.get('sample_rate', 10000)
         self.formant_log = []  # Timestamped formant data for CSV export
         
         # Min RMS display state (temporary indicator shown when adjusted)
@@ -146,10 +147,9 @@ class LiveVowel(BaseAudioVisualizer):
         Run the main event loop for the LiveVowel GUI.
         Handles event polling, audio capture, GUI updates, and rendering.
         """
-        # Start audio capture thread in background
-        self.audio_processor.start()
-        # Begin recording audio to buffer
+        # Start audio capture only if launching directly into recording mode.
         if self.state == "recording":
+            self.audio_processor.start()
             self.audio_processor.start_recording()
         # Log start message to console/log file
         logger.info("LiveVowel started")
@@ -186,6 +186,12 @@ class LiveVowel(BaseAudioVisualizer):
                 # Process audio and render formant points
                 # This is the core visualization - captures audio, analyzes formants, plots points
                 self.run_points(self.state, track_type=self.display_mode)
+
+                # Draw overlays after main content so they are visible.
+                self.draw_min_rms_display()
+                if self.show_help:
+                    self.draw_help_overlay()
+                self.draw_mode_status()
                 
                 # Swap display buffers to show everything drawn this frame
                 # Double buffering prevents tearing/flicker
@@ -274,15 +280,16 @@ class LiveVowel(BaseAudioVisualizer):
                 recorded_count = 0
             # Calculate analysis window size in samples
             # Window is chunk_ms * number_of_chunks
+            capture_rate = self.audio_processor.get_recording_sample_rate()
             window_ms = self.audio_config.get('chunk_ms', 5) * self.audio_config.get('number_of_chunks', 5)
             window_samples = int(round(
-                self.audio_config['sample_rate'] * (window_ms / 1000)
+                capture_rate * (window_ms / 1000)
             ))
             # Calculate elapsed recording time, adjusted for window center
             # Subtract half window to align timestamp with center of analysis window
             elapsed_time = max(
                 0.0,  # Never negative
-                (recorded_count - (window_samples / 2)) / self.audio_config['sample_rate']
+                (recorded_count - (window_samples / 2)) / capture_rate
             )
             
             # Apply smoothing filter to formant values
@@ -418,14 +425,6 @@ class LiveVowel(BaseAudioVisualizer):
             # Update configuration with new window size
             self.gui_info['gui_size'] = new_size
 
-        # Draw min RMS display if recently adjusted
-        # Shows current minimum RMS threshold in top-right corner for 1 second
-        self.draw_min_rms_display()
-
-        # Draw help overlay if enabled (toggle with 'h')
-        if self.show_help:
-            self.draw_help_overlay()
-
         # Check if user pressed Ctrl+V (toggle between recording and menu)
         if self.event_holder.ctrl_v is not None:
             # Determine current state and take appropriate action
@@ -442,6 +441,7 @@ class LiveVowel(BaseAudioVisualizer):
                 self.audio_processor.start()
                 # Begin buffering raw audio samples for WAV export
                 self.audio_processor.start_recording()
+                self.recording_sample_rate = self.audio_processor.get_recording_sample_rate()
                 # Generate new session name with current timestamp
                 self.session_name = exporter.create_session_name('speaker')
                 # Reset recording start time (will be set on first frame)
@@ -465,6 +465,7 @@ class LiveVowel(BaseAudioVisualizer):
                     self.track = pygame.sprite.Group()
                 # Stop buffering raw audio samples
                 self.audio_processor.stop_recording()
+                self.recording_sample_rate = self.audio_processor.get_recording_sample_rate()
                 # Retrieve recorded audio from processor and convert to list
                 self.audio_buffer = self.audio_processor.get_recording().tolist()
                 # Stop audio capture thread and release resources
@@ -606,21 +607,32 @@ class LiveVowel(BaseAudioVisualizer):
                 wav_file = f"{base_path}.wav"
                 # Call exporter utility to write 16-bit mono WAV file
                 exporter.save_wav(wav_file, numpy.array(self.audio_buffer), 
-                                self.audio_config['sample_rate'])
+                                self.recording_sample_rate)
                 # Log successful export to console/log file
                 logger.info(f"Audio saved to {wav_file}")
+
+    def draw_mode_status(self):
+        """Draw top-left mode status to make recording state explicit."""
+        font = pygame.font.SysFont('Arial', 20)
+        mode_text = "Mode: RECORDING" if self.state == "recording" else "Mode: MENU (recording off)"
+        text_surface = font.render(mode_text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(topleft=(10, 10))
+        bg_rect = text_rect.inflate(10, 6)
+        pygame.draw.rect(self.screen, (0, 0, 0), bg_rect)
+        pygame.draw.rect(self.screen, (100, 100, 100), bg_rect, 1)
+        self.screen.blit(text_surface, text_rect)
             
-            # Export timestamped CSV formant file if enabled and log has data
-            # Check both config setting and non-empty formant log
-            if config.EXPORT_CONFIG.get('save_csv', True) and self.formant_log:
-                # Construct CSV filename: speaker_YYYY-MM-DD_HHMMSS_formants.csv
-                csv_file = f"{base_path}_formants.csv"
-                # Call exporter utility to write CSV with columns:
-                # time_ms, f0, f1, f2, f3, voicing, track_number
-                # Only includes voiced frames within configured f0 range
-                exporter.save_formants_csv(csv_file, self.formant_log)
-                # Log successful export to console/log file
-                logger.info(f"Formants saved to {csv_file}")
+        # Export timestamped CSV formant file if enabled and log has data
+        # Check both config setting and non-empty formant log
+        if config.EXPORT_CONFIG.get('save_csv', True) and self.formant_log:
+            # Construct CSV filename: speaker_YYYY-MM-DD_HHMMSS_formants.csv
+            csv_file = f"{base_path}_formants.csv"
+            # Call exporter utility to write CSV with columns:
+            # time_ms, f0, f1, f2, f3, voicing, track_number
+            # Only includes voiced frames within configured f0 range
+            exporter.save_formants_csv(csv_file, self.formant_log)
+            # Log successful export to console/log file
+            logger.info(f"Formants saved to {csv_file}")
 
     def fill(self, state):
         """Fill screen with solid background color based on application state.
@@ -744,13 +756,13 @@ class LiveVowel(BaseAudioVisualizer):
         help_text = [
             "=== LiveVowel Controls ===",
             "",
-            "CTRL+V - Toggle recording/menu mode",
-            "CTRL+T - Toggle template vowels on/off",
+            "CTRL/CMD+V - Toggle recording/menu mode",
+            "CTRL/CMD+T - Toggle template vowels on/off",
             "+/-    - Adjust minimum RMS threshold",
             "Backspace - Undo last track",
             "Delete - Clear all tracks",
             "G      - Toggle grid",
-            "H or Ctrl+H - Toggle this help overlay",
+            "H or Ctrl/Cmd+H - Toggle this help overlay",
         ]
         
         # Draw title
@@ -805,6 +817,7 @@ class LiveVowel(BaseAudioVisualizer):
             try:
                 # Stop buffering raw audio samples
                 self.audio_processor.stop_recording()
+                self.recording_sample_rate = self.audio_processor.get_recording_sample_rate()
                 # Retrieve any remaining audio from buffer if not already done
                 if not self.audio_buffer:
                     # Get recorded samples and convert numpy array to Python list
