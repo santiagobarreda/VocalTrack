@@ -136,6 +136,7 @@ class LivePitch(BaseAudioVisualizer):
         self.session_name = exporter.create_session_name('speaker')  # Unique session name for export
         self.recording_start_time = None  # Start time of current recording (s)
         self.audio_buffer = []  # Raw audio buffer for WAV export
+        self.recording_sample_rate = self.sample_rate  # Export rate for captured device audio
         self.pitch_log = []  # Pitch log for current track only
         self.all_pitch_points = []  # All pitch points for all tracks (for CSV export)
 
@@ -181,6 +182,7 @@ class LivePitch(BaseAudioVisualizer):
         )  # End processor init
         self.audio_processor.start()  # Start background thread
         self.audio_processor.start_recording()  # Start audio buffering
+        self.recording_sample_rate = self.audio_processor.get_recording_sample_rate()
         logger.info("Recording started")  # Log start
 
     def stop_recording(self):
@@ -194,6 +196,7 @@ class LivePitch(BaseAudioVisualizer):
 
         if self.audio_processor:
             self.audio_processor.stop_recording()
+            self.recording_sample_rate = self.audio_processor.get_recording_sample_rate()
             # Accumulate audio from this track into the buffer
             self.audio_buffer.extend(self.audio_processor.get_recording().tolist())
             self.audio_processor.stop()
@@ -354,13 +357,14 @@ class LivePitch(BaseAudioVisualizer):
                 # Calculate window size from chunk_ms and number_of_chunks
                 chunk_ms = self.audio_config.get('chunk_ms', 25)
                 number_of_chunks = self.audio_config.get('number_of_chunks', 2)
+                capture_rate = self.audio_processor.get_recording_sample_rate()
                 window_ms = chunk_ms * number_of_chunks
                 window_samples = int(round(  # Window size in samples
-                    self.audio_config['sample_rate'] * (window_ms / 1000)  # Convert ms to samples
+                    capture_rate * (window_ms / 1000)  # Convert ms to samples
                 ))  # End window sample calc
                 elapsed_time = max(  # Compute elapsed time
                     0.0,  # Clamp at zero
-                    (recorded_count - (window_samples / 2)) / self.audio_config['sample_rate']  # Center window time
+                    (recorded_count - (window_samples / 2)) / capture_rate  # Center window time
                 )  # End elapsed time calc
 
                 if not self.started:  # Waiting for sustained voicing
@@ -604,7 +608,7 @@ class LivePitch(BaseAudioVisualizer):
         # Export audio file if enabled in config and audio was recorded
         if config.EXPORT_CONFIG.get('save_wav', True) and self.audio_buffer:  # Check WAV export enabled and buffer not empty
             wav_file = f"{base_path}_pitch.wav"  # Construct WAV filename with _pitch suffix
-            exporter.save_wav(wav_file, numpy.array(self.audio_buffer), self.sample_rate)  # Write audio buffer to WAV file
+            exporter.save_wav(wav_file, numpy.array(self.audio_buffer), self.recording_sample_rate)  # Write audio buffer to WAV file
             logger.info(f"Audio saved to {wav_file}")  # Log successful WAV export
 
         # Export all buffered pitch points for all tracks, with track number
@@ -676,7 +680,7 @@ class LivePitch(BaseAudioVisualizer):
             "+/= - Increase volume threshold",  # Raise RMS dB threshold
             "-/_ - Decrease volume threshold",  # Lower RMS dB threshold
             "G - Toggle grid overlay",  # Show/hide time and frequency grid
-            "H - Toggle this help",  # Show/hide this overlay
+            "H or Ctrl/Cmd+H - Toggle this help",  # Show/hide this overlay
             "ESC - Quit application",  # Exit the program
         ]  # End help text definition
         
