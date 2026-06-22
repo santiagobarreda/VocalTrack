@@ -48,6 +48,9 @@ class EventHolder:
         self.space_up = None          # Space released (stop recording)
         self.l_key = None             # L pressed (toggle log/linear frequency scale)
 
+        # Treat Ctrl and Command (Meta) as equivalent for cross-platform shortcuts.
+        modifier_mask = pygame.KMOD_CTRL | pygame.KMOD_META
+
         # Parse all events and set attributes for relevant ones
         for event in self.events:
             # Check event type and store if relevant
@@ -86,19 +89,19 @@ class EventHolder:
                 self.resize = event
             elif event.type == pygame.KEYDOWN:
                 # Keyboard key pressed
-                if event.mod & pygame.KMOD_CTRL and event.key == pygame.K_v:
+                if event.mod & modifier_mask and event.key == pygame.K_v:
                     # Ctrl+V pressed - toggle between menu and recording mode
                     self.ctrl_v = event
-                elif event.mod & pygame.KMOD_CTRL and event.key == pygame.K_t:
+                elif event.mod & modifier_mask and event.key == pygame.K_t:
                     # Ctrl+T pressed - toggle vowel template
                     self.ctrl_t = event
-                elif event.mod & pygame.KMOD_CTRL and event.key in (pygame.K_EQUALS, pygame.K_PLUS, pygame.K_KP_PLUS):
+                elif event.mod & modifier_mask and event.key in (pygame.K_EQUALS, pygame.K_PLUS, pygame.K_KP_PLUS):
                     # Ctrl+Plus pressed - increase gain
                     self.ctrl_plus = event
-                elif event.mod & pygame.KMOD_CTRL and event.key in (pygame.K_MINUS, pygame.K_UNDERSCORE, pygame.K_KP_MINUS):
+                elif event.mod & modifier_mask and event.key in (pygame.K_MINUS, pygame.K_UNDERSCORE, pygame.K_KP_MINUS):
                     # Ctrl+Minus pressed - decrease gain
                     self.ctrl_minus = event
-                elif event.mod & pygame.KMOD_CTRL and event.key == pygame.K_h:
+                elif event.mod & modifier_mask and event.key == pygame.K_h:
                     # Ctrl+H pressed - toggle help overlay
                     self.ctrl_h = event
                 elif event.key == pygame.K_BACKSPACE:
