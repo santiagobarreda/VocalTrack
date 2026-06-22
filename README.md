@@ -32,7 +32,7 @@ For a detailed description of the **VocalTrack** architecture and signal process
 
 ### Requirements
 
-- Python 3.7 or higher
+- Python >=3.9 and <3.14
 - Microphone/audio input device (head-mounted microphones are require for proper function)
 - OS audio permissions enabled
 
@@ -86,6 +86,8 @@ Click one of the four launch buttons:
 - `H`: Toggle help overlay
 - `+`/`-`: Adjust threshold/gain/dynamic range
 
+**Note for macOS users:** all `Ctrl+...` shortcuts also support `Cmd+...`.
+
 **LiveVowel:**
 - `Ctrl+V`: Toggle recording state
 - `Ctrl+T`: Toggle vowel template display
@@ -100,6 +102,11 @@ Click one of the four launch buttons:
 
 **LiveSpectrogram:**
 - `Ctrl +`/`Ctrl -`: Adjust gain
+
+### Startup Defaults
+
+- Recording starts OFF when launching each mode.
+- Help overlay starts ON for each visualization window.
 
 **LiveSpectrum:**
 - `+`/`-`: Adjust gain offset
