@@ -44,6 +44,7 @@ class EventHolder:
         self.g_key = None             # G pressed (toggle grid)
         self.h_key = None             # H pressed (toggle help)
         self.ctrl_t = None            # Ctrl+T pressed (toggle template vowels)
+        self.ctrl_r = None            # Ctrl+R pressed (toggle recording)
         self.space_down = None        # Space pressed (start recording)
         self.space_up = None          # Space released (stop recording)
         self.l_key = None             # L pressed (toggle log/linear frequency scale)
@@ -104,6 +105,9 @@ class EventHolder:
                 elif event.mod & modifier_mask and event.key == pygame.K_h:
                     # Ctrl+H pressed - toggle help overlay
                     self.ctrl_h = event
+                elif event.mod & modifier_mask and event.key == pygame.K_r:
+                    # Ctrl+R pressed - toggle recording
+                    self.ctrl_r = event
                 elif event.key == pygame.K_BACKSPACE:
                     # Backspace pressed (undo last track)
                     self.backspace = event

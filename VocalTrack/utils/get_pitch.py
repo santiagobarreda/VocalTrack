@@ -288,6 +288,6 @@ def get_pitch_custom(signal: np.ndarray,
     """
 
     # Your custom pitch tracking function here
-    return {'f0': None, 'voiced': False, 'confidence': 0.0, 'rms_db': 0.0, 'method_used': 'native'}
+    return {'f0': None, 'voiced': False, 'confidence': 0.0, 'rms_db': 0.0, 'method_used': 'custom'}
 
 

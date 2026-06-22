@@ -65,8 +65,8 @@ class Smoother:
         self.skipped = 0  # Counter for consecutive unstable formant frames
         self.valid_frames = 0  # Counter for consecutive valid voiced formant frames (warm-up)
         self._euro_prev_time = None  # Last timestamp for 1-Euro filter (formants)
-        self._euro_x_prev = [1, 1, 1]  # Previous filtered values [F1, F2, f0] in log space
-        self._euro_dx_prev = [1, 1, 1]  # Previous velocity estimates [dF1/dt, dF2/dt, df0/dt]
+        self._euro_x_prev = [0, 0, 0]  # Previous filtered values [F1, F2, f0] in log space
+        self._euro_dx_prev = [0, 0, 0]  # Previous velocity estimates [dF1/dt, dF2/dt, df0/dt]
         
         # Isolated state variables for pitch (independent from formant smoothing)
         self.pitch_use = False  # Flag indicating pitch value is stable enough to display
@@ -375,7 +375,7 @@ class Smoother:
 
                 # Reset 1-Euro filter state (start fresh on next stable segment)
                 self._euro_prev_time = None  # Clear time tracker
-                self._euro_x_prev = [1, 1, 1]  # Reset positions to log(0+1)=0 → exp-1=0 Hz
-                self._euro_dx_prev = [1, 1, 1]  # Reset velocity estimates
+                self._euro_x_prev = [0, 0, 0]  # Reset positions to log(0+1)=0
+                self._euro_dx_prev = [0, 0, 0]  # Reset velocity estimates
 
                 self.use = False  # Mark as not trustworthy
