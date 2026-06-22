@@ -222,6 +222,14 @@ class LiveVowel(BaseAudioVisualizer):
             template_status = "toggled on" if self.show_template else "toggled off"
             logger.debug(f"Template vowels {template_status}")
 
+        # Save the currently toggled green template labels + their positions.
+        if self.event_holder.ctrl_s:
+            success, output_path, saved_count = self.ipalabels.save_current_template()
+            if success:
+                logger.info(f"Saved IPA template ({saved_count} labels) to {output_path}")
+            else:
+                logger.error(f"Failed to save IPA template to {output_path}")
+
         # Draw vowel template overlay if enabled in configuration
         # This shows a reference vowel chart that can be scaled/positioned
         if self.gui_info.get('show_vowel_template', False):
@@ -770,6 +778,7 @@ class LiveVowel(BaseAudioVisualizer):
             "CTRL/CMD+V - Show / hide IPA vowel picker",
             "             (opening picker stops recording)",
             "CTRL/CMD+T - Toggle template vowels on/off",
+            "CTRL+S - Save current template labels/positions",
             "+/-    - Adjust minimum RMS threshold",
             "Backspace - Undo last track",
             "Delete - Clear all tracks",
