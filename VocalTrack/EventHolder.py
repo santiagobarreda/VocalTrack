@@ -41,6 +41,7 @@ class EventHolder:
         self.ctrl_plus = None         # Ctrl+Plus pressed (increase gain)
         self.ctrl_minus = None        # Ctrl+Minus pressed (decrease gain)
         self.ctrl_h = None            # Ctrl+H pressed (toggle help overlay)
+        self.ctrl_s = None            # Ctrl+S pressed (save current IPA template)
         self.g_key = None             # G pressed (toggle grid)
         self.h_key = None             # H pressed (toggle help)
         self.ctrl_t = None            # Ctrl+T pressed (toggle template vowels)
@@ -101,6 +102,9 @@ class EventHolder:
                 elif event.mod & pygame.KMOD_CTRL and event.key == pygame.K_h:
                     # Ctrl+H pressed - toggle help overlay
                     self.ctrl_h = event
+                elif event.mod & pygame.KMOD_CTRL and event.key == pygame.K_s:
+                    # Ctrl+S pressed - save current IPA template
+                    self.ctrl_s = event
                 elif event.key == pygame.K_BACKSPACE:
                     # Backspace pressed (undo last track)
                     self.backspace = event

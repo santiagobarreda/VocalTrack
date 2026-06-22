@@ -89,6 +89,7 @@ Click one of the four launch buttons:
 **LiveVowel:**
 - `Ctrl+V`: Toggle recording state
 - `Ctrl+T`: Toggle vowel template display
+- `Ctrl+S`: Save currently toggled template labels + frequency positions
 - `L`: Toggle log/linear frequency scale
 - `Backspace`: Undo last track (in track mode)
 - `Delete`: Clear all tracks (in track mode)

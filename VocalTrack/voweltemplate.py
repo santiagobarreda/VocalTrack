@@ -69,8 +69,19 @@ class VowelTemplate:
         # Load vowel template data from CSV file
         # Each row represents one vowel with its formant values
         try:
-            self.vowel_matrix = numpy.genfromtxt(file_path, delimiter=',')
+            self.vowel_matrix = numpy.genfromtxt(file_path, delimiter=',', ndmin=2)
         except (OSError, ValueError):
+            self.enabled = False
+            self.vowel_matrix = numpy.empty((0, 4))
+            self.f1 = numpy.array([])
+            self.f2 = numpy.array([])
+            self.images = []
+            self.plot_x = numpy.array([])
+            self.plot_y = numpy.array([])
+            return
+
+        # Handle empty/malformed templates gracefully.
+        if self.vowel_matrix.size == 0 or self.vowel_matrix.shape[1] < 3:
             self.enabled = False
             self.vowel_matrix = numpy.empty((0, 4))
             self.f1 = numpy.array([])
@@ -93,16 +104,21 @@ class VowelTemplate:
         vowels = self.vowel_matrix[:,0]
         # List to store loaded and scaled vowel symbol images
         self.images = []
-        # Load images for each of the 10 vowels in the template
+        # Load images for each vowel row in the template
         # Images are bundled in the executable; templates are not
         images_prefix = "VocalTrack/images" if self.is_bundled else "images"
-        for i in range(10):
+        for i in range(len(vowels)):
             # Construct path to vowel symbol image using image number from CSV
             image_path = os.path.join(self.base_path, images_prefix, "green", str(int(vowels[i]))+".png")
-            # Load image with alpha channel (transparency support)
-            self.image_original = pygame.image.load(image_path).convert_alpha()
-            # Scale image to standard display size (60x56 pixels)
-            self.image = pygame.transform.scale(self.image_original, (60, 56))
+            try:
+                # Load image with alpha channel (transparency support)
+                self.image_original = pygame.image.load(image_path).convert_alpha()
+                # Scale image to standard display size (60x56 pixels)
+                self.image = pygame.transform.scale(self.image_original, (60, 56))
+            except OSError:
+                # Keep template functional even if an image file is missing.
+                self.image = pygame.Surface((60, 56))
+                self.image.fill((50, 150, 50))
             # Add scaled image to list
             self.images.append(self.image)
 
@@ -130,8 +146,9 @@ class VowelTemplate:
         """
         if not self.enabled:
             return
-        # Draw each of the 10 vowel symbols at its scaled position
-        for i in range(10):
+        # Draw each template vowel symbol at its scaled position.
+        n_symbols = min(len(self.images), len(self.plot_x), len(self.plot_y))
+        for i in range(n_symbols):
             # Blit (copy) the image to the screen at the calculated coordinates
             self.screen.blit(self.images[i],
                              (self.plot_x[i],
