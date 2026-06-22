@@ -135,8 +135,10 @@ class LivePitch(BaseAudioVisualizer):
         self.space_released_since_recording_stop = True  # Track if space was released after forced stop
         self.session_name = exporter.create_session_name('speaker')  # Unique session name for export
         self.recording_start_time = None  # Start time of current recording (s)
-        self.audio_buffer = []  # Raw audio buffer for WAV export
-        self.recording_sample_rate = self.sample_rate  # Export rate for captured device audio
+        self.original_audio_buffer = []  # Device-rate audio buffer for WAV export
+        self.downsampled_audio_buffer = []  # Analysis-rate audio buffer for WAV export
+        self.original_recording_sample_rate = self.sample_rate  # Device-rate export sample rate
+        self.downsampled_recording_sample_rate = self.sample_rate  # Analysis-rate export sample rate
         self.pitch_log = []  # Pitch log for current track only
         self.all_pitch_points = []  # All pitch points for all tracks (for CSV export)
 
@@ -167,7 +169,7 @@ class LivePitch(BaseAudioVisualizer):
         self.track_points = pygame.sprite.Group()  # New active track group
         self.recording_start_time = None  # Reset recording start time
         self.track_start_time = None  # Reset track start time
-        # Don't clear audio_buffer - accumulate across all tracks
+        # Don't clear audio export buffers - accumulate across all tracks
         self.pitch_log = []  # Clear pitch log for this track
         # Don't create new session_name - use the one from __init__ for all tracks
         self.smoother._f0_history = []  # Reset smoother history
@@ -181,8 +183,18 @@ class LivePitch(BaseAudioVisualizer):
             input_device_index=self.input_device_index  # Audio input device
         )  # End processor init
         self.audio_processor.start()  # Start background thread
-        self.audio_processor.start_recording()  # Start audio buffering
-        self.recording_sample_rate = self.audio_processor.get_recording_sample_rate()
+        self.audio_processor.start_recording(
+            record_original=(
+                config.EXPORT_CONFIG.get('save_recordings', False)
+                and config.EXPORT_CONFIG.get('save_original_audio', True)
+            ),
+            record_downsampled=(
+                config.EXPORT_CONFIG.get('save_recordings', False)
+                and config.EXPORT_CONFIG.get('save_downsampled_audio', False)
+            )
+        )  # Start audio buffering
+        self.original_recording_sample_rate = self.audio_processor.get_original_recording_sample_rate()
+        self.downsampled_recording_sample_rate = self.audio_processor.get_downsampled_recording_sample_rate()
         logger.info("Recording started")  # Log start
 
     def stop_recording(self):
@@ -196,9 +208,10 @@ class LivePitch(BaseAudioVisualizer):
 
         if self.audio_processor:
             self.audio_processor.stop_recording()
-            self.recording_sample_rate = self.audio_processor.get_recording_sample_rate()
-            # Accumulate audio from this track into the buffer
-            self.audio_buffer.extend(self.audio_processor.get_recording().tolist())
+            self.original_recording_sample_rate = self.audio_processor.get_original_recording_sample_rate()
+            self.downsampled_recording_sample_rate = self.audio_processor.get_downsampled_recording_sample_rate()
+            self.original_audio_buffer.extend(self.audio_processor.get_original_recording().tolist())
+            self.downsampled_audio_buffer.extend(self.audio_processor.get_downsampled_recording().tolist())
             self.audio_processor.stop()
 
         if len(self.track_points.sprites()) >= 2:
@@ -606,10 +619,23 @@ class LivePitch(BaseAudioVisualizer):
         base_path = os.path.join(output_dir, self.session_name)  # Build base path using session timestamp
 
         # Export audio file if enabled in config and audio was recorded
-        if config.EXPORT_CONFIG.get('save_wav', True) and self.audio_buffer:  # Check WAV export enabled and buffer not empty
-            wav_file = f"{base_path}_pitch.wav"  # Construct WAV filename with _pitch suffix
-            exporter.save_wav(wav_file, numpy.array(self.audio_buffer), self.recording_sample_rate)  # Write audio buffer to WAV file
-            logger.info(f"Audio saved to {wav_file}")  # Log successful WAV export
+        if config.EXPORT_CONFIG.get('save_wav', True):
+            if config.EXPORT_CONFIG.get('save_original_audio', True) and self.original_audio_buffer:
+                wav_file = f"{base_path}_pitch_original.wav"
+                exporter.save_wav(
+                    wav_file,
+                    numpy.array(self.original_audio_buffer),
+                    self.original_recording_sample_rate
+                )
+                logger.info(f"Original audio saved to {wav_file}")
+            if config.EXPORT_CONFIG.get('save_downsampled_audio', False) and self.downsampled_audio_buffer:
+                wav_file = f"{base_path}_pitch_downsampled.wav"
+                exporter.save_wav(
+                    wav_file,
+                    numpy.array(self.downsampled_audio_buffer),
+                    self.downsampled_recording_sample_rate
+                )
+                logger.info(f"Downsampled audio saved to {wav_file}")
 
         # Export all buffered pitch points for all tracks, with track number
         if config.EXPORT_CONFIG.get('save_csv', True) and self.all_pitch_points:

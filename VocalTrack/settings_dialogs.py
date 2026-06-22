@@ -603,9 +603,21 @@ class RecordingSettingsDialog(BaseSettingsDialog):
         self.save_recordings_checkbox.setChecked(is_checked)
         # Add the checkbox to the form
         self.form.addRow("", self.save_recordings_checkbox)
+
+        self.save_original_audio_checkbox = QCheckBox("Save original audio stream (device rate WAV)")
+        self.save_original_audio_checkbox.setChecked(
+            saved.get('save_original_audio', config.EXPORT_CONFIG.get('save_original_audio', True))
+        )
+        self.form.addRow("", self.save_original_audio_checkbox)
+
+        self.save_downsampled_audio_checkbox = QCheckBox("Save downsampled audio stream (analysis rate WAV)")
+        self.save_downsampled_audio_checkbox.setChecked(
+            saved.get('save_downsampled_audio', config.EXPORT_CONFIG.get('save_downsampled_audio', False))
+        )
+        self.form.addRow("", self.save_downsampled_audio_checkbox)
         
         # Create a small text label to help the user understand what to do
-        info_label = QLabel("Select your microphone or audio input device. Enable 'Save recordings' to export audio and data from LivePitch and LiveVowel modes.")
+        info_label = QLabel("Select your microphone or audio input device. Enable recording export to save CSV data plus either or both WAV streams from LivePitch and LiveVowel.")
         # Color the text gray and make it small
         info_label.setStyleSheet("color: gray; font-size: 11px;")
         # Allow the text to wrap to a new line if the window gets too small
@@ -625,5 +637,7 @@ class RecordingSettingsDialog(BaseSettingsDialog):
     def get_settings(self):
         """Gathers the recording settings and packages them for the main app."""
         return {
-            'save_recordings': self.save_recordings_checkbox.isChecked()
+            'save_recordings': self.save_recordings_checkbox.isChecked(),
+            'save_original_audio': self.save_original_audio_checkbox.isChecked(),
+            'save_downsampled_audio': self.save_downsampled_audio_checkbox.isChecked(),
         }

@@ -118,8 +118,13 @@ class AudioProcessor(QThread):
         self.recording_enabled = False
         # Thread lock to protect recording buffer from concurrent access
         self.recording_lock = threading.Lock()
-        # List to store raw audio samples when recording is enabled
+        # Device-rate/original recording buffer and analysis-rate/downsampled buffer.
         self.raw_recording = []
+        self.downsampled_recording = []
+        self.record_original_stream = True
+        self.record_downsampled_stream = False
+        self.recording_sample_count = 0
+        self.downsampled_recording_sample_count = 0
         # Polyphase resampler state (configured in run() once device format is known)
         self._resample_up = 1
         self._resample_down = 1
@@ -371,10 +376,24 @@ class AudioProcessor(QThread):
                     # Preserve device-rate mono Int16 samples for high-fidelity export.
                     if self.recording_enabled:
                         with self.recording_lock:
-                            self.raw_recording.extend(samples)
+                            self.recording_sample_count += len(samples)
+                            if self.record_original_stream:
+                                self.raw_recording.extend(samples)
                 
                     # Resample from device rate to analysis rate when necessary
                     normalized_samples = self._resample_chunk(normalized_samples)
+
+                    # Preserve the downsampled/analysis stream when requested.
+                    if self.recording_enabled:
+                        with self.recording_lock:
+                            self.downsampled_recording_sample_count += len(normalized_samples)
+                            if self.record_downsampled_stream:
+                                downsampled_samples = np.clip(
+                                    normalized_samples * 32767.0,
+                                    -32768,
+                                    32767
+                                ).astype(np.int16)
+                                self.downsampled_recording.extend(downsampled_samples)
 
                     # Try to add normalized samples to the raw queue for analysis
                     try:
@@ -529,15 +548,24 @@ class AudioProcessor(QThread):
             logger.debug("No raw samples available (timeout)")
             return np.zeros(self.chunk_size, dtype=np.float32)
 
-    def start_recording(self):
+    def start_recording(self, record_original=True, record_downsampled=False):
         """
-        Begin buffering raw audio samples for export. Clears previous recording and enables recording flag.
+        Begin buffering audio samples for export.
+
+        Args:
+            record_original (bool): Whether to buffer the device-rate/original stream.
+            record_downsampled (bool): Whether to buffer the analysis-rate/downsampled stream.
         """
         # Use lock to ensure thread-safe access to recording buffer
         with self.recording_lock:
             # Clear any previous recording data
             self.raw_recording = []
-            # Enable recording flag (audio thread will start saving samples)
+            self.downsampled_recording = []
+            self.recording_sample_count = 0
+            self.downsampled_recording_sample_count = 0
+            self.record_original_stream = bool(record_original)
+            self.record_downsampled_stream = bool(record_downsampled)
+            # Enable recording flag even if neither stream is saved so timing still works.
             self.recording_enabled = True
 
     def stop_recording(self):
@@ -551,25 +579,42 @@ class AudioProcessor(QThread):
 
     def get_recording(self):
         """
-        Return a copy of the buffered recording as a NumPy array.
-        Useful for exporting audio and precise timing calculations.
+        Return the buffered device-rate/original recording as a NumPy array.
+        Kept for backward compatibility with existing callers.
         """
         # Use lock to ensure thread-safe access to recording buffer
         with self.recording_lock:
             # Convert list of samples to numpy array and return a copy
             return np.array(self.raw_recording, dtype=np.int16)
 
+    def get_original_recording(self):
+        """Return a copy of the buffered device-rate/original recording."""
+        with self.recording_lock:
+            return np.array(self.raw_recording, dtype=np.int16)
+
+    def get_downsampled_recording(self):
+        """Return a copy of the buffered analysis-rate/downsampled recording."""
+        with self.recording_lock:
+            return np.array(self.downsampled_recording, dtype=np.int16)
+
     def get_recording_sample_count(self):
         """
-        Return the number of recorded samples currently buffered.
+        Return the number of device-rate samples captured during the current recording session.
         """
         # Use lock to ensure thread-safe access to recording buffer
         with self.recording_lock:
-            # Return the total number of samples recorded
-            return len(self.raw_recording)
+            return self.recording_sample_count
 
     def get_recording_sample_rate(self):
         """
-        Return the sample rate of the buffered recording stream.
+        Return the sample rate of the buffered device-rate/original recording stream.
         """
         return int(self.recording_sample_rate)
+
+    def get_original_recording_sample_rate(self):
+        """Return the sample rate of the buffered device-rate/original recording stream."""
+        return int(self.recording_sample_rate)
+
+    def get_downsampled_recording_sample_rate(self):
+        """Return the sample rate of the buffered analysis-rate/downsampled recording stream."""
+        return int(self.analysis_sample_rate)

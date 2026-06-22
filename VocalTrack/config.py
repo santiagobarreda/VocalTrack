@@ -9,6 +9,8 @@ PERFORMANCE_CONFIG = {
 EXPORT_CONFIG = {
     'save_recordings': False,  # Enable/disable saving recordings (off by default)
     'save_wav': True,  # Save audio as WAV (when save_recordings is True)
+    'save_original_audio': True,  # Save the device-rate/original audio stream as WAV
+    'save_downsampled_audio': False,  # Save the analysis-rate/downsampled audio stream as WAV
     'save_csv': True,  # Save timestamped CSV with formants (when save_recordings is True)
     'output_dir': 'recordings',  # Output directory for files
 }

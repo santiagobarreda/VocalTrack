@@ -133,8 +133,10 @@ class LiveVowel(BaseAudioVisualizer):
         # Recording session tracking for file export
         self.session_name = exporter.create_session_name('speaker')
         self.recording_start_time = None  # Will be set when first frame is captured
-        self.audio_buffer = []  # Raw audio samples for WAV export
-        self.recording_sample_rate = self.audio_config.get('sample_rate', 10000)
+        self.original_audio_buffer = []  # Device-rate audio samples for WAV export
+        self.downsampled_audio_buffer = []  # Analysis-rate audio samples for WAV export
+        self.original_recording_sample_rate = self.audio_config.get('sample_rate', 10000)
+        self.downsampled_recording_sample_rate = self.audio_config.get('sample_rate', 10000)
         self.formant_log = []  # Timestamped formant data for CSV export
         
         # Min RMS display state (temporary indicator shown when adjusted)
@@ -464,11 +466,22 @@ class LiveVowel(BaseAudioVisualizer):
             input_device_index=self.input_device_index
         )
         self.audio_processor.start()
-        self.audio_processor.start_recording()
-        self.recording_sample_rate = self.audio_processor.get_recording_sample_rate()
+        self.audio_processor.start_recording(
+            record_original=(
+                config.EXPORT_CONFIG.get('save_recordings', False)
+                and config.EXPORT_CONFIG.get('save_original_audio', True)
+            ),
+            record_downsampled=(
+                config.EXPORT_CONFIG.get('save_recordings', False)
+                and config.EXPORT_CONFIG.get('save_downsampled_audio', False)
+            )
+        )
+        self.original_recording_sample_rate = self.audio_processor.get_original_recording_sample_rate()
+        self.downsampled_recording_sample_rate = self.audio_processor.get_downsampled_recording_sample_rate()
         self.session_name = exporter.create_session_name('speaker')
         self.recording_start_time = None
-        self.audio_buffer = []
+        self.original_audio_buffer = []
+        self.downsampled_audio_buffer = []
         self.formant_log = []
         self.recording_active = True
         logger.info("Recording session started")
@@ -486,12 +499,14 @@ class LiveVowel(BaseAudioVisualizer):
         # Stop the audio processor
         if self.audio_processor is not None:
             self.audio_processor.stop_recording()
-            self.recording_sample_rate = self.audio_processor.get_recording_sample_rate()
-            self.audio_buffer = self.audio_processor.get_recording().tolist()
+            self.original_recording_sample_rate = self.audio_processor.get_original_recording_sample_rate()
+            self.downsampled_recording_sample_rate = self.audio_processor.get_downsampled_recording_sample_rate()
+            self.original_audio_buffer = self.audio_processor.get_original_recording().tolist()
+            self.downsampled_audio_buffer = self.audio_processor.get_downsampled_recording().tolist()
             self.audio_processor.stop()
         self.recording_active = False
         # Export if data was captured
-        if self.audio_buffer or self.formant_log:
+        if self.original_audio_buffer or self.downsampled_audio_buffer or self.formant_log:
             logger.info(f"Exporting session: {self.session_name}")
             self.save(file_type='all')
         logger.info("Recording session stopped")
@@ -595,22 +610,29 @@ class LiveVowel(BaseAudioVisualizer):
             # Build base filename path: recordings/speaker_YYYY-MM-DD_HHMMSS
             base_path = os.path.join(output_dir, self.session_name)
             
-            # Export WAV audio file if enabled and audio buffer has data
-            # First conditional checks config setting for WAV export
             if config.EXPORT_CONFIG.get('save_wav', True):
-                # Ensure audio buffer is populated (should be done in main_events)
-                if not self.audio_buffer and self.audio_processor is not None:
-                    # Fallback: get recording from processor if buffer somehow empty
-                    self.audio_buffer = self.audio_processor.get_recording().tolist()
-            # Second conditional verifies both config setting and non-empty buffer
-            if config.EXPORT_CONFIG.get('save_wav', True) and self.audio_buffer:
-                # Construct WAV filename: speaker_YYYY-MM-DD_HHMMSS.wav
-                wav_file = f"{base_path}.wav"
-                # Call exporter utility to write 16-bit mono WAV file
-                exporter.save_wav(wav_file, numpy.array(self.audio_buffer), 
-                                self.recording_sample_rate)
-                # Log successful export to console/log file
-                logger.info(f"Audio saved to {wav_file}")
+                if not self.original_audio_buffer and self.audio_processor is not None:
+                    self.original_audio_buffer = self.audio_processor.get_original_recording().tolist()
+                if not self.downsampled_audio_buffer and self.audio_processor is not None:
+                    self.downsampled_audio_buffer = self.audio_processor.get_downsampled_recording().tolist()
+
+                if config.EXPORT_CONFIG.get('save_original_audio', True) and self.original_audio_buffer:
+                    wav_file = f"{base_path}_vowel_original.wav"
+                    exporter.save_wav(
+                        wav_file,
+                        numpy.array(self.original_audio_buffer),
+                        self.original_recording_sample_rate
+                    )
+                    logger.info(f"Original audio saved to {wav_file}")
+
+                if config.EXPORT_CONFIG.get('save_downsampled_audio', False) and self.downsampled_audio_buffer:
+                    wav_file = f"{base_path}_vowel_downsampled.wav"
+                    exporter.save_wav(
+                        wav_file,
+                        numpy.array(self.downsampled_audio_buffer),
+                        self.downsampled_recording_sample_rate
+                    )
+                    logger.info(f"Downsampled audio saved to {wav_file}")
 
             # Export timestamped CSV formant file if enabled and log has data
             if config.EXPORT_CONFIG.get('save_csv', True) and self.formant_log:
@@ -807,9 +829,12 @@ class LiveVowel(BaseAudioVisualizer):
             try:
                 if self.recording_active and self.audio_processor is not None:
                     self.audio_processor.stop_recording()
-                    self.recording_sample_rate = self.audio_processor.get_recording_sample_rate()
-                    if not self.audio_buffer:
-                        self.audio_buffer = self.audio_processor.get_recording().tolist()
+                    self.original_recording_sample_rate = self.audio_processor.get_original_recording_sample_rate()
+                    self.downsampled_recording_sample_rate = self.audio_processor.get_downsampled_recording_sample_rate()
+                    if not self.original_audio_buffer:
+                        self.original_audio_buffer = self.audio_processor.get_original_recording().tolist()
+                    if not self.downsampled_audio_buffer:
+                        self.downsampled_audio_buffer = self.audio_processor.get_downsampled_recording().tolist()
             except Exception:
                 pass
             # Stop the processor thread regardless of recording state
@@ -817,7 +842,7 @@ class LiveVowel(BaseAudioVisualizer):
                 self.audio_processor.stop()
 
             # Export any remaining captured data
-            if self.audio_buffer or self.formant_log:
+            if self.original_audio_buffer or self.downsampled_audio_buffer or self.formant_log:
                 logger.info(f"Exporting session: {self.session_name}")
                 self.save(file_type='all')
 
@@ -827,6 +852,7 @@ class LiveVowel(BaseAudioVisualizer):
             logger.error(f"Error during shutdown: {e}")
         finally:
             self.recording_start_time = None
-            self.audio_buffer = []
+            self.original_audio_buffer = []
+            self.downsampled_audio_buffer = []
             self.formant_log = []
             self.session_name = exporter.create_session_name('speaker')

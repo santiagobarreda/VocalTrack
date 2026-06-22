@@ -592,6 +592,8 @@ class LauncherWindow(QMainWindow):
         
         # If the user changed recording settings...
         if self.recording_settings:
+            self.recording_settings.setdefault('save_original_audio', config.EXPORT_CONFIG.get('save_original_audio', True))
+            self.recording_settings.setdefault('save_downsampled_audio', config.EXPORT_CONFIG.get('save_downsampled_audio', False))
             # Push them into the global brain
             config.EXPORT_CONFIG.update(self.recording_settings)
             # Command the system to memorize them
