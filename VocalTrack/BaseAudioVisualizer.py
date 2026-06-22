@@ -72,7 +72,7 @@ class BaseAudioVisualizer:
         
         # Create switches for universal visual settings (Grid and Help menu)
         self.show_grid = True
-        self.show_help = False
+        self.show_help = True
         # Look in the settings to see if the user wants Logarithmic or Linear spacing
         self.freq_scale = self.config.get('freq_scale', 'log')
         
