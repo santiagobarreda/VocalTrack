@@ -138,8 +138,6 @@ class LiveSpectrogram(BaseAudioVisualizer):
         self.dynamic_range = self.spec_config['dynamic_range']
         # Store gain in dB for amplitude scaling (controls overall brightness)
         self.gain_db = 0.0
-        # Flag to toggle help overlay display
-        self.show_help = False
         
         # Update sample_rate based on max_freq (Nyquist: need 2× max frequency)
         # This overwrites any sample rate from audio_config to ensure correct sampling
@@ -225,8 +223,6 @@ class LiveSpectrogram(BaseAudioVisualizer):
         )
         # Start audio capture thread (runs in background, fills queue with chunks)
         self.audio_processor.start()
-        # Begin recording audio to internal buffer for later export
-        self.audio_processor.start_recording()
         
         # Log initialization completion
         logger.info("LiveSpectrogram initialized")
@@ -404,11 +400,11 @@ class LiveSpectrogram(BaseAudioVisualizer):
         
         # Define help text lines (key: description)
         help_lines = [
-            ('Ctrl+H', 'Toggle this help overlay'),
+            ('Ctrl/Cmd+H', 'Toggle this help overlay'),
             ('ESC', 'Quit application'),
             ('', ''),  # Blank line for spacing
             ('+  / -', 'Decrease / Increase dynamic range'),
-            ('Ctrl+ / Ctrl-', 'Increase / Decrease gain'),
+            ('Ctrl/Cmd+ / Ctrl/Cmd-', 'Increase / Decrease gain'),
         ]
         
         # Draw help text lines
@@ -467,8 +463,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
                 # Recalculate pixels per second for new width
                 self.pixels_per_second = self.GUI_WIDTH / self.display_seconds
                 # Recalculate column width for new dimensions
-                window_length_ms = self.spec_config.get('window_length_ms', 5.0)
-                time_per_column = window_length_ms / 1000.0
+                time_per_column = self.spec_config.get('chunk_ms', 6.0) / 1000.0
                 self.column_width = int(round(self.pixels_per_second * time_per_column))
                 self.column_width = max(self.column_width, 1)
         
@@ -550,7 +545,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
         """Draw the gain indicator below the dynamic range indicator if not at default value (40 dB).
         Shows the current gain setting when it differs from the default.
         """
-        if self.gain_db != 40.0:
+        if self.gain_db != 0.0:
             # Find y position below dynamic range indicator
             y_pos = 10
             if self.dynamic_range != self.spec_config['dynamic_range']:
@@ -562,6 +557,17 @@ class LiveSpectrogram(BaseAudioVisualizer):
             pygame.draw.rect(self.screen, (0, 0, 0), bg_rect)
             pygame.draw.rect(self.screen, (100, 100, 100), bg_rect, 1)
             self.screen.blit(gain_text, (10, y_pos))
+
+    def draw_mode_status(self):
+        """Draw top-left status text for mode behavior clarity."""
+        font = pygame.font.SysFont('Arial', 20)
+        mode_text = "Mode: LiveSpectrogram (recording off)" if not self.recording else "Mode: LiveSpectrogram (recording on)"
+        text_surface = font.render(mode_text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(topright=(self.GUI_WIDTH - 10, 10))
+        bg_rect = text_rect.inflate(10, 6)
+        pygame.draw.rect(self.screen, (0, 0, 0), bg_rect)
+        pygame.draw.rect(self.screen, (100, 100, 100), bg_rect, 1)
+        self.screen.blit(text_surface, text_rect)
             
 
     def run(self):
@@ -580,81 +586,77 @@ class LiveSpectrogram(BaseAudioVisualizer):
         clock = pygame.time.Clock()
 
         # MAIN LOOP: Continues until keep_running flag is set False
-        while self.keep_running:
-            # Limit frame rate to configured FPS for consistent CPU usage and smooth display
-            clock.tick(self.fps)
+        try:
+            while self.keep_running:
+                # Limit frame rate to configured FPS for consistent CPU usage and smooth display
+                clock.tick(self.fps)
 
-            # Get all pending pygame events (mouse clicks, keyboard, window events, etc.)
-            # This clears the event queue and returns a list of Event objects
-            self.events = pygame.event.get()
-            # Parse events into easily accessible attributes (quit, resize, etc.)
-            # EventHolder converts pygame events into named attributes for simplified checking
-            self.event_holder = EventHolder(self.events)
-            
-            # PROCESS AUDIO CHUNKS FROM QUEUE
-            # Drain the queue of all available sounds to keep the display up-to-date.
-            # This is non-blocking and ensures the display is as smooth as possible.
-            max_sounds_per_frame = 20  # Limit to prevent stalling the app
-            for _ in range(max_sounds_per_frame):
-                try:
-                    # Use get_nowait() for a non-blocking call.
-                    # This raises queue.Empty if the queue is empty.
-                    sound = self.audio_processor.analyzed_sounds_queue.get_nowait()
-
-                    if sound and sound.spectrum_magnitude_db is not None:
-                        self.render_spectrogram_column(sound.spectrum_magnitude_db, self.column_width)
-
-                        # Store raw audio for export if recording is enabled
-                        if self.recording and sound.samples is not None:
-                            try:
-                                if sound.samples.dtype == np.float32:
-                                    int16_samples = (sound.samples * 32768.0).astype(np.int16)
-                                else:
-                                    int16_samples = sound.samples.astype(np.int16)
-                                self.audio_buffer.extend(int16_samples.tolist())
-                            except Exception:
-                                pass
-                except queue.Empty:
-                    # The queue is empty, so we're done processing for this frame.
+                # Get and parse events first to keep the window responsive under load.
+                self.events = pygame.event.get()
+                self.event_holder = EventHolder(self.events)
+                self.handle_events()
+                if not self.keep_running:
                     break
-            
-            # HANDLE USER INPUT
-            # Process keyboard, mouse, and window events
-            self.handle_events()
-            
-            # CLEAR DISPLAY
-            # Fill entire screen with black to prevent ghosting artifacts
-            self.screen.fill(self.BLACK)
-            
-            # DRAW SPECTROGRAM
-            # Blit the scrolling spectrogram surface (spec_surface) to the pygame screen
-            # This displays the time-domain frequency content with proper colors
-            self.screen.blit(self.spec_surface, (0, 0))
-            
-            # DRAW REFERENCE GRIDS
-            # Draw horizontal lines at 1kHz intervals with frequency labels
-            self.draw_frequency_grid()
-            # Draw vertical lines at 1-second intervals for time reference
-            self.draw_time_grid()
-            
-            # Draw dynamic range and gain indicators briefly upon change
-            self.draw_dynamic_range_indicator()
-            self.draw_gain_indicator()
-             
-            # DRAW HELP OVERLAY (if toggled on with Ctrl+H)
-            if self.show_help:
-                self.draw_help_overlay()
-            
-            # UPDATE DISPLAY
-            # Flip pygame double buffer to show rendered frame on screen
-            pygame.display.flip()
-        
-        # CLEANUP AFTER MAIN LOOP EXITS
-        # Stop audio processor if it's still running
-        if self.audio_processor:
-            self.audio_processor.stop()
-        # Close pygame and release all resources
-        pygame.quit()
+                
+                # PROCESS AUDIO CHUNKS FROM QUEUE
+                # Drain the queue of all available sounds to keep the display up-to-date.
+                # This is non-blocking and ensures the display is as smooth as possible.
+                max_sounds_per_frame = 20  # Limit to prevent stalling the app
+                for _ in range(max_sounds_per_frame):
+                    try:
+                        # Use get_nowait() for a non-blocking call.
+                        # This raises queue.Empty if the queue is empty.
+                        sound = self.audio_processor.analyzed_sounds_queue.get_nowait()
+
+                        if sound and sound.spectrum_magnitude_db is not None:
+                            self.render_spectrogram_column(sound.spectrum_magnitude_db, self.column_width)
+
+                            # Store raw audio for export if recording is enabled
+                            if self.recording and sound.samples is not None:
+                                try:
+                                    if sound.samples.dtype == np.float32:
+                                        int16_samples = (sound.samples * 32768.0).astype(np.int16)
+                                    else:
+                                        int16_samples = sound.samples.astype(np.int16)
+                                    self.audio_buffer.extend(int16_samples.tolist())
+                                except Exception:
+                                    pass
+                    except queue.Empty:
+                        # The queue is empty, so we're done processing for this frame.
+                        break
+                
+                # CLEAR DISPLAY
+                # Fill entire screen with black to prevent ghosting artifacts
+                self.screen.fill(self.BLACK)
+                
+                # DRAW SPECTROGRAM
+                # Blit the scrolling spectrogram surface (spec_surface) to the pygame screen
+                # This displays the time-domain frequency content with proper colors
+                self.screen.blit(self.spec_surface, (0, 0))
+                
+                # DRAW REFERENCE GRIDS
+                # Draw horizontal lines at 1kHz intervals with frequency labels
+                self.draw_frequency_grid()
+                # Draw vertical lines at 1-second intervals for time reference
+                self.draw_time_grid()
+                
+                # Draw dynamic range and gain indicators briefly upon change
+                self.draw_dynamic_range_indicator()
+                self.draw_gain_indicator()
+                self.draw_mode_status()
+                
+                # DRAW HELP OVERLAY (if toggled on with Ctrl/Cmd+H)
+                if self.show_help:
+                    self.draw_help_overlay()
+                
+                # UPDATE DISPLAY
+                # Flip pygame double buffer to show rendered frame on screen
+                pygame.display.flip()
+        finally:
+            # CLEANUP AFTER MAIN LOOP EXITS
+            if self.audio_processor:
+                self.audio_processor.stop()
+            pygame.quit()
 
     def quit(self):
         """Request application exit by setting keep_running flag.
