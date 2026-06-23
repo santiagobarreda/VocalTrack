@@ -7,6 +7,7 @@
 
 import json
 import logging
+import os
 import numpy as np
 import pygame
 import queue
@@ -108,6 +109,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
 
         # Use chunk-based settings from spectrogram config for the analysis window
         chunk_ms = self.spec_config.get('chunk_ms', 15.0)
+        self.chunk_ms = chunk_ms
         number_of_chunks = self.spec_config.get('number_of_chunks', 3)
         self.audio_config['chunk_ms'] = chunk_ms
         self.audio_config['number_of_chunks'] = number_of_chunks
@@ -257,17 +259,17 @@ class LiveSpectrogram(BaseAudioVisualizer):
         # Flip so low freq is at bottom (frequencies are already ordered low to high)
         magnitude_normalized = np.flipud(magnitude_normalized)
 
-        # Map normalized magnitudes to RGB colors via local lookup table.
-        colors = self.colormap_table[magnitude_normalized]
+        # Map y-coordinate to spectral index (frequency bin index)
+        y_indices = (np.arange(self.GUI_HEIGHT) / self.GUI_HEIGHT * len(colors)).astype(np.int32)
+        np.clip(y_indices, 0, len(colors) - 1, out=y_indices)
+        column_colors = colors[y_indices, :3]  # shape (GUI_HEIGHT, 3)
 
-        # Create column surface and fill with color per pixel row
-        column_surface = pygame.Surface((width, self.GUI_HEIGHT))
-        for y in range(self.GUI_HEIGHT):
-            # Map y to spectral index (colors length matches number of freq bins)
-            freq_idx = int((y / self.GUI_HEIGHT) * len(colors))
-            freq_idx = min(freq_idx, len(colors) - 1)
-            color = colors[freq_idx][:3]
-            pygame.draw.line(column_surface, color, (0, y), (width - 1, y))
+        # Create 2D array of shape (width, GUI_HEIGHT, 3) representing the column
+        # Pygame's surfarray expects (X, Y) layout: (width, height, 3)
+        column_rgb = np.repeat(column_colors[np.newaxis, :, :], width, axis=0)
+
+        # Create column surface directly from numpy array (much faster than drawing lines in a loop)
+        column_surface = pygame.surfarray.make_surface(column_rgb)
 
         # Scroll existing spectrogram left and blit new column at right edge
         self.spec_surface.scroll(-width, 0)
@@ -462,8 +464,8 @@ class LiveSpectrogram(BaseAudioVisualizer):
                     self.spec_surface.blit(scaled, (0, 0))
                 # Recalculate pixels per second for new width
                 self.pixels_per_second = self.GUI_WIDTH / self.display_seconds
-                # Recalculate column width for new dimensions
-                time_per_column = self.spec_config.get('chunk_ms', 6.0) / 1000.0
+                # Recalculate column width for new dimensions using the actual chunk duration
+                time_per_column = self.chunk_ms / 1000.0
                 self.column_width = int(round(self.pixels_per_second * time_per_column))
                 self.column_width = max(self.column_width, 1)
         
@@ -518,14 +520,16 @@ class LiveSpectrogram(BaseAudioVisualizer):
         if self.audio_buffer:
             # Convert Python list to NumPy array with int16 dtype (CD quality)
             audio_array = np.array(self.audio_buffer, dtype=np.int16)
-            # Call exporter to write WAV file with timestamp and speaker name
-            wav_path = exporter.export_wav(
+            output_dir = config.EXPORT_CONFIG.get('output_dir', 'recordings')
+            wav_file = os.path.join(output_dir, f"{self.session_name}_spectrogram.wav")
+            # Call exporter to write WAV file
+            exporter.save_wav(
+                wav_file,
                 audio_array,
-                self.audio_config['sample_rate'],
-                self.session_name
+                self.audio_config['sample_rate']
             )
             # Log file save location for user reference
-            logger.info(f"Exported audio to {wav_path}")
+            logger.info(f"Exported audio to {wav_file}")
 
     def draw_dynamic_range_indicator(self):
         """Draw the dynamic range indicator in the top-left corner if not at default value.
