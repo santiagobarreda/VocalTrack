@@ -85,9 +85,9 @@ Three visualization modes are available (configure in Formant Plot Settings):
 
 ### Output Files
 
-**WAV file**: `recordings/speaker_YYYY-MM-DD_HHMMSS.wav`
+**WAV file**: `recordings/speaker_YYYY-MM-DD_HHMMSS_vowel_original.wav` (and/or `recordings/speaker_YYYY-MM-DD_HHMMSS_vowel_downsampled.wav`)
 - Mono, 16-bit
-- Sample rate: 2 × max_formant (typically 10000 Hz)
+- Sample rate: device sample rate (original) or 2 × max_formant (typically 10000 Hz, downsampled)
 - Normalized amplitude
 
 **CSV file**: `recordings/speaker_YYYY-MM-DD_HHMMSS_formants.csv`
@@ -210,9 +210,9 @@ Two scrolling modes are available (configure in Pitch Plot Settings):
 
 ### Output Files
 
-**WAV file**: `recordings/speaker_YYYY-MM-DD_HHMMSS_pitch.wav`
+**WAV file**: `recordings/speaker_YYYY-MM-DD_HHMMSS_pitch_original.wav` (and/or `recordings/speaker_YYYY-MM-DD_HHMMSS_pitch_downsampled.wav`)
 - Mono, 16-bit
-- Sample rate: 2 × max_f0 (typically determined by analysis settings)
+- Sample rate: device sample rate (original) or 2 × max_formant (typically 10000 Hz, downsampled)
 - Normalized amplitude
 
 **CSV file**: `recordings/speaker_YYYY-MM-DD_HHMMSS_pitch.csv`

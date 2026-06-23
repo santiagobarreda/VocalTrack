@@ -649,18 +649,17 @@ pip install praat-parselmouth
 1. **Device not connected**:
    - Solution: Plug in microphone and restart VocalTrack
 
-2. **PyAudio doesn't see device**:
-   - Solution: Test with: `python -c "import pyaudio; pa = pyaudio.PyAudio(); [print(pa.get_device_info_by_index(i)) for i in range(pa.get_device_count())]"`
+2. **QtMultimedia doesn't see device**:
+   - Solution: Test with: `python -c "from PySide6.QtCore import QCoreApplication; from PySide6.QtMultimedia import QMediaDevices; app = QCoreApplication([]); [print(d.description()) for d in QMediaDevices.audioInputs()]"`
    - Verify device appears in list
 
 3. **Device is output-only**:
    - Solution: Ensure device has input channels (not just output)
-   - Check `maxInputChannels > 0` in device info
 
 4. **Driver issue**:
    - Solution: Update audio drivers
    - Try different USB port for USB microphones
-   - Reinstall PyAudio
+   - Reinstall PySide6
 
 ---
 
@@ -832,7 +831,7 @@ If you've tried the solutions above and still have issues:
 
 Use this checklist to systematically diagnose problems:
 
-- [ ] Python version ≥ 3.7 installed
+- [ ] Python version >= 3.9 and < 3.14.4 installed
 - [ ] All requirements installed (`pip install -r requirements.txt`)
 - [ ] Virtual environment activated (if using)
 - [ ] Running from project root directory

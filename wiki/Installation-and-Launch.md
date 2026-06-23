@@ -4,7 +4,7 @@
 
 ### Minimum Requirements
 
-- **Python**: 3.7 or higher
+- **Python**: >=3.9 and <3.14
 - **Operating System**: Windows, macOS, or Linux
 - **Audio**: USB microphone or other reasonable high-quality built-in microphone
 - **Display**: 1024×768 minimum resolution
@@ -79,7 +79,7 @@ If you encounter permission errors during installation:
 If you see "ModuleNotFoundError" when launching:
 
 1. Re-run: `pip install -r requirements.txt`
-2. Check Python version: `python --version` (must be ≥3.7)
+2. Check Python version: `python --version` (must be >=3.9 and <3.14)
 
 ## Operating System Permissions
 
@@ -331,7 +331,7 @@ Clicking the X button on the launcher window closes only the launcher. Any runni
 
 **For LiveVowel and LivePitch:**
 - Audio and CSV files are automatically exported to `recordings/` on quit
-- Files are named with timestamps: `speaker_YYYY-MM-DD_HHMMSS.wav` and `speaker_YYYY-MM-DD_HHMMSS_formants.csv` (or `_pitch.csv`)
+- Files are named with timestamps/suffixes: `speaker_YYYY-MM-DD_HHMMSS_vowel_original.wav` (and/or `_downsampled.wav`), `speaker_YYYY-MM-DD_HHMMSS_formants.csv` for LiveVowel; `speaker_YYYY-MM-DD_HHMMSS_pitch_original.wav` (and/or `_downsampled.wav`), `speaker_YYYY-MM-DD_HHMMSS_pitch.csv` for LivePitch
 - Audio saving can be toggled on/off in the recording settings dialog
 
 **For LiveSpectrogram and LiveSpectrum:**

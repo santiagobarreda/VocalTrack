@@ -41,8 +41,8 @@ Welcome to the VocalTrack documentation. This wiki provides comprehensive guides
 ## What VocalTrack Produces
 
 **Audio + Data (Exported on Exit):**
-- LiveVowel: WAV audio + CSV with timestamped F1/F2/F3 formants
-- LivePitch: WAV audio + CSV with timestamped f0 pitch values
+- LiveVowel: original and/or downsampled WAV audio + CSV with timestamped F1/F2/F3 formants
+- LivePitch: original and/or downsampled WAV audio + CSV with timestamped f0 pitch values
 
 **Visualization Only:**
 - LiveSpectrogram: Real-time spectrogram display
@@ -72,7 +72,7 @@ Settings are loaded on startup and applied to both launcher dialogs and runtime 
 
 ## System Requirements
 
-- Python 3.7 or higher
+- Python >=3.9 and <3.14
 - Working (preferably head mounted) microphone/audio input
 - OS audio permissions enabled
 - ~100MB disk space for installation (mostly of dependencies)

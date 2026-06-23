@@ -30,20 +30,22 @@ EXPORT_CONFIG = {
 All session files use timestamped naming:
 
 ```
-speaker_YYYY-MM-DD_HHMMSS[_suffix].[ext]
+speaker_YYYY-MM-DD_HHMMSS_[mode]_[type].[ext]
 ```
 
 **Components:**
 - `speaker`: Default speaker ID (hardcoded, can be modified in source)
 - `YYYY-MM-DD`: Date (year-month-day)
 - `HHMMSS`: Time (hour-minute-second, 24-hour format)
-- `[_suffix]`: Optional mode-specific suffix (`_formants`, `_pitch`)
+- `[mode]`: Mode identifier (`vowel` or `pitch`)
+- `[type]`: Output subtype (`original` or `downsampled` for audio; `formants` or `pitch` for CSVs)
 - `[.ext]`: File extension (`.wav`, `.csv`)
 
 **Examples:**
-- `speaker_2026-03-04_102534.wav`
+- `speaker_2026-03-04_102534_vowel_original.wav`
+- `speaker_2026-03-04_102534_vowel_downsampled.wav`
 - `speaker_2026-03-04_102534_formants.csv`
-- `speaker_2026-03-04_102539_pitch.wav`
+- `speaker_2026-03-04_102539_pitch_original.wav`
 - `speaker_2026-03-04_102539_pitch.csv`
 
 **Note:** Current implementation uses fixed speaker ID "speaker". To customize, modify `exporter.create_session_name()` function.
@@ -54,7 +56,7 @@ speaker_YYYY-MM-DD_HHMMSS[_suffix].[ext]
 
 ### WAV File
 
-**Filename**: `recordings/speaker_YYYY-MM-DD_HHMMSS.wav`
+**Filename**: `recordings/speaker_YYYY-MM-DD_HHMMSS_vowel_original.wav` (and/or `recordings/speaker_YYYY-MM-DD_HHMMSS_vowel_downsampled.wav`)
 
 **Format:**
 - **Encoding**: PCM (Pulse Code Modulation)
@@ -141,7 +143,7 @@ Example: Three separate vowels → track_number values 1, 2, 3
 
 ### WAV File
 
-**Filename**: `recordings/speaker_YYYY-MM-DD_HHMMSS_pitch.wav`
+**Filename**: `recordings/speaker_YYYY-MM-DD_HHMMSS_pitch_original.wav` (and/or `recordings/speaker_YYYY-MM-DD_HHMMSS_pitch_downsampled.wav`)
 
 **Format:**
 - **Encoding**: PCM
@@ -384,7 +386,7 @@ CSVs can be opened directly in spreadsheet software:
 ```python
 from scipy.io import wavfile
 
-sample_rate, audio = wavfile.read('recordings/speaker_2026-03-04_102534.wav')
+sample_rate, audio = wavfile.read('recordings/speaker_2026-03-04_102534_vowel_original.wav')
 print(f'Sample rate: {sample_rate} Hz')
 print(f'Audio shape: {audio.shape}')
 print(f'Duration: {len(audio) / sample_rate:.2f} seconds')
@@ -395,7 +397,7 @@ print(f'Duration: {len(audio) / sample_rate:.2f} seconds')
 ```python
 import librosa
 
-audio, sample_rate = librosa.load('recordings/speaker_2026-03-04_102534.wav', sr=None)
+audio, sample_rate = librosa.load('recordings/speaker_2026-03-04_102534_vowel_original.wav', sr=None)
 print(f'Sample rate: {sample_rate} Hz')
 print(f'Duration: {len(audio) / sample_rate:.2f} seconds')
 ```
