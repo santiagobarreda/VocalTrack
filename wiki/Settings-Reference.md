@@ -289,30 +289,29 @@ Accessed via "Recording Settings" button in launcher. Selects audio input device
 
 | Parameter | Default | Range | Description |
 |-----------|---------|-------|-------------|
-| `input_device_index` | System default | 0 to device_count-1 | PyAudio device index for microphone/audio input. `None` = system default. |
+| `input_device_index` | System default | 0 to device_count-1 | QtMultimedia device index for microphone/audio input. `None` = system default. |
 
 **Device selection:**
 
-The dialog displays all available PyAudio input devices in a dropdown. Each device shows:
+The dialog displays all available audio input devices detected by PySide6's QtMultimedia API in a dropdown. Each device shows:
 - Device index
-- Device name  
-- Number of input channels
+- Device name
 
 **If no devices appear:**
 - Microphone may not be connected
 - OS may not recognize device
-- PyAudio may need reinstallation
+- PySide6/QtMultimedia dependencies may be missing (e.g. GStreamer on Linux)
 - Check OS microphone permissions
 
 **Testing device selection:**
 
 ```python
-import pyaudio
-pa = pyaudio.PyAudio()
-for i in range(pa.get_device_count()):
-    info = pa.get_device_info_by_index(i)
-    if info['maxInputChannels'] > 0:
-        print(f"{i}: {info['name']}")
+from PySide6.QtCore import QCoreApplication
+from PySide6.QtMultimedia import QMediaDevices
+app = QCoreApplication([])
+devices = QMediaDevices.audioInputs()
+for i, device in enumerate(devices):
+    print(f"{i}: {device.description()}")
 ```
 
 ---

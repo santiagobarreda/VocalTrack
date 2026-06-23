@@ -31,49 +31,35 @@ pip install -r requirements.txt
 
 This installs all required packages:
 
-- **pyaudio** (0.2.13): Real-time audio I/O
+- **PySide6** (≥6.5.0): GUI launcher interface & real-time audio input via QtMultimedia
 - **parselmouth** (0.4.0): Praat-based formant/pitch analysis (optional backend)
 - **pygame** (2.5.0): Graphics and visualization
 - **numpy** (≥1.20.0): Numerical operations
-- **PySide6** (≥6.5.0): GUI launcher interface
 
 ### Step 3: Verify Installation
 
 Test that all dependencies are installed correctly:
 
 ```bash
-python -c "import pyaudio, parselmouth, pygame, numpy, PySide6; print('All dependencies installed successfully!')"
+python -c "import parselmouth, pygame, numpy, PySide6; print('All dependencies installed successfully!')"
 ```
 
 If you see "All dependencies installed successfully!", you're ready to launch VocalTrack.
 
 ## Troubleshooting Installation
 
-### PyAudio Installation Issues
+### QtMultimedia / Audio Dependencies (Linux only)
 
-**Windows:**
+**Windows & macOS:**
 
-If `pip install pyaudio` fails, you may need to install from a wheel file:
-
-1. Download the appropriate `.whl` file from [PyAudio binaries](https://www.lfd.uci.edu/~gohlke/pythonlibs/#pyaudio)
-2. Install using: `pip install path\to\PyAudio-0.2.13-cpXX-cpXX-win_amd64.whl`
-
-**macOS:**
-
-Install PortAudio first using Homebrew:
-
-```bash
-brew install portaudio
-pip install pyaudio
-```
+No extra dependencies are required. PySide6 comes with built-in support for audio devices via QtMultimedia.
 
 **Linux:**
 
-Install development libraries:
+On Linux, QtMultimedia relies on the system GStreamer framework. Install the required packages with:
 
 ```bash
-sudo apt-get install portaudio19-dev python3-pyaudio
-pip install pyaudio
+sudo apt-get install libqt6multimedia6 libqt6multimediawidgets6 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav
 ```
 
 ### Permission Errors
@@ -182,7 +168,7 @@ These dialogs configure parameters for all visualization modes:
 
 3. **Recording Settings**
    - Audio input device selection
-   - Displays available PyAudio devices
+   - Displays available QtMultimedia devices
 
 4. **Formant Plot Settings** (LiveVowel)
    - F1/F2 display ranges
@@ -237,7 +223,7 @@ Four colored buttons launch visualization modes:
 If no devices appear, verify:
 - Microphone is connected and powered on
 - OS recognizes the device (check Sound settings)
-- PyAudio can detect devices: `python -c "import pyaudio; pa = pyaudio.PyAudio(); print(f'{pa.get_device_count()} devices found')"`
+- QtMultimedia can detect devices: `python -c "from PySide6.QtCore import QCoreApplication; from PySide6.QtMultimedia import QMediaDevices; app = QCoreApplication([]); print(f'{len(QMediaDevices.audioInputs())} input devices found')"`
 
 ### 2. Configure Analysis Parameters
 

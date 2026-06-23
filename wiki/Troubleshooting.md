@@ -20,38 +20,24 @@ This guide provides solutions to common issues encountered when installing, conf
 
 ## Installation Issues
 
-### No module named 'pyaudio'
+### PySide6 / QtMultimedia Audio Issues
 
-**Problem**: `ImportError: No module named 'pyaudio'` when launching VocalTrack.
+**Problem**: VocalTrack is unable to initialize audio or no audio devices are detected, or you get errors regarding QtMultimedia.
 
 **Solution**:
+VocalTrack uses **QtMultimedia** (part of `PySide6`) for real-time audio input. Unlike PyAudio, it does not require installing external wrappers or compiling PortAudio. However, you must ensure PySide6 is fully installed.
 
-**Windows:**
+**Windows & macOS:**
+Reinstall PySide6:
 ```bash
-pip install pyaudio
-```
-
-If this fails, download a wheel file:
-1. Visit https://www.lfd.uci.edu/~gohlke/pythonlibs/#pyaudio
-2. Download the appropriate `.whl` for your Python version (e.g., `PyAudio‑0.2.13‑cp39‑cp39‑win_amd64.whl` for Python 3.9, 64-bit)
-3. Install: `pip install path\to\PyAudio-0.2.13-cp39-cp39-win_amd64.whl`
-
-**macOS:**
-```bash
-brew install portaudio
-pip install pyaudio
+pip uninstall PySide6
+pip install PySide6>=6.5.0
 ```
 
 **Linux (Ubuntu/Debian):**
+On Linux, QtMultimedia requires system multimedia plugins (GStreamer) and GStreamer codecs. Install them via:
 ```bash
-sudo apt-get install portaudio19-dev python3-pyaudio
-pip install pyaudio
-```
-
-**Linux (Fedora/RHEL):**
-```bash
-sudo dnf install portaudio-devel
-pip install pyaudio
+sudo apt-get install libqt6multimedia6 libqt6multimediawidgets6 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav
 ```
 
 ### No module named 'PySide6'
@@ -158,18 +144,18 @@ pip install praat-parselmouth
    - **macOS**: System Preferences → Sound → Input tab
    - **Linux**: `arecord -l` to list recording devices
 
-3. **Verify PyAudio can see devices**:
+3. **Verify PySide6 can see devices**:
    ```bash
-   python -c "import pyaudio; pa = pyaudio.PyAudio(); print(f'{pa.get_device_count()} devices found'); [print(f\"{i}: {pa.get_device_info_by_index(i)['name']}\") for i in range(pa.get_device_count())]"
+   python -c "from PySide6.QtCore import QCoreApplication; from PySide6.QtMultimedia import QMediaDevices; app = QCoreApplication([]); print(f'{len(QMediaDevices.audioInputs())} input devices found'); [print(f\"{i}: {d.description()}\") for i, d in enumerate(QMediaDevices.audioInputs())]"
    ```
 
 4. **Check OS permissions** (macOS/Windows):
    - **macOS**: System Preferences → Security & Privacy → Privacy → Microphone → Enable for Terminal/Python
    - **Windows**: Settings → Privacy → Microphone → Allow apps to access microphone, enable for desktop apps
 
-5. **Troubleshoot PyAudio**:
-   - Reinstall PyAudio: `pip uninstall pyaudio; pip install pyaudio`
-   - On macOS, reinstall PortAudio: `brew reinstall portaudio; pip install --force-reinstall pyaudio`
+5. **Troubleshoot QtMultimedia**:
+   - Reinstall PySide6: `pip uninstall PySide6; pip install PySide6`
+   - On Linux, make sure GStreamer libraries are installed (see installation issues above).
 
 6. **Restart computer**: Sometimes audio drivers need refresh
 
@@ -682,7 +668,7 @@ pip install praat-parselmouth
 
 ### Windows: DLL load failed
 
-**Problem**: `ImportError: DLL load failed` when importing PyAudio or other packages.
+**Problem**: `ImportError: DLL load failed` when importing PySide6 or other packages.
 
 **Solution**:
 
@@ -692,13 +678,9 @@ pip install praat-parselmouth
 
 2. **Reinstall problematic package**:
    ```bash
-   pip uninstall pyaudio
-   pip install pyaudio
+   pip uninstall PySide6
+   pip install PySide6
    ```
-
-3. **Use wheel installaton**:
-   - Download wheel from https://www.lfd.uci.edu/~gohlke/pythonlibs/#pyaudio
-   - Install: `pip install PyAudio-0.2.13-cpXX-cpXX-win_amd64.whl`
 
 ### macOS: Permission denied for microphone
 
@@ -756,7 +738,7 @@ defaults.ctl.card 0
 pulseaudio --check
 pulseaudio --start
 
-# VocalTrack should automatically use PulseAudio through PyAudio
+# VocalTrack should automatically use PulseAudio through QtMultimedia
 ```
 
 ---
@@ -811,20 +793,21 @@ If you've tried the solutions above and still have issues:
 
 3. **Test components individually**:
    ```python
-   # Test PyAudio
-   import pyaudio
-   pa = pyaudio.PyAudio()
-   print(f"{pa.get_device_count()} devices")
-   
-   # Test formant analysis
-   from VocalTrack.Sound import Sound
-   # ... (advanced testing)
-   ```
+    # Test QtMultimedia
+    from PySide6.QtCore import QCoreApplication
+    from PySide6.QtMultimedia import QMediaDevices
+    app = QCoreApplication([])
+    print(f"{len(QMediaDevices.audioInputs())} devices")
+    
+    # Test formant analysis
+    from VocalTrack.Sound import Sound
+    # ... (advanced testing)
+    ```
 
 4. **Check Python and package versions**:
    ```bash
    python --version
-   pip list | grep -E "pyaudio|parselmouth|pygame|numpy|PySide6"
+   pip list | grep -E "parselmouth|pygame|numpy|PySide6"
    ```
 
 5. **Search GitHub Issues**:
@@ -855,7 +838,7 @@ Use this checklist to systematically diagnose problems:
 - [ ] Running from project root directory
 - [ ] Microphone connected and recognized by OS
 - [ ] OS microphone permissions granted
-- [ ] PyAudio can detect audio devices
+- [ ] QtMultimedia can detect audio devices
 - [ ] Audio input works in other applications
 - [ ] Settings are saved in `.VocalTrack_settings.json`
 - [ ] `recordings/` folder exists and is writable
