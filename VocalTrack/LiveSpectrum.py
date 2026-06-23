@@ -283,29 +283,25 @@ class LiveSpectrum(BaseAudioVisualizer):
         y_axis_max = 0.0  # 0 dB at top
         y_axis_min = -float(self.dynamic_range)  # -dynamic_range dB at bottom
         
-        # Convert spectrum coordinates to screen pixel coordinates
-        points = []
-        for freq, mag_db in zip(freq_subset, spectrum_with_gain):
-            # Normalize frequency from 0-max_freq to 0-1
-            freq_normalized = float(freq) / float(self.max_freq)
-            # Convert to pixel X position
-            x_pixel = float(left_margin) + freq_normalized * float(plot_width)
-            
-            # Map magnitude dB from y_axis_min to y_axis_max range to 0-1
-            # Clamp to display range (values above 0 dB are clipped, below floor fade out)
-            mag_clamped = np.clip(float(mag_db), y_axis_min, y_axis_max)
-            # Normalize: 0 dB maps to 1.0, -dynamic_range dB maps to 0.0
-            mag_normalized = (mag_clamped - y_axis_min) / (y_axis_max - y_axis_min)
-            # Convert to pixel Y position (invert because Y increases downward)
-            y_pixel = float(screen_height) - float(bottom_margin) - mag_normalized * float(plot_height)
-            
-            # Convert to Python int for pygame (handles numpy types)
-            points.append((int(x_pixel), int(y_pixel)))
+        # Convert spectrum coordinates to screen pixel coordinates using fast vectorized numpy operations
+        freq_normalized = freq_subset.astype(np.float64) / float(self.max_freq)
+        x_pixels = (float(left_margin) + freq_normalized * float(plot_width)).astype(np.int32)
         
-            # Draw the continuous spectrum line in a single C-level call
-            if points and len(points) > 1:
-                # Arguments: surface, color, closed (False = don't connect end to start), points list, width
-                pygame.draw.lines(self.screen, (0, 150, 255), False, points, 4)
+        # Map magnitude dB from y_axis_min to y_axis_max range to 0-1
+        # Clamp to display range (values above 0 dB are clipped, below floor fade out)
+        mag_clamped = np.clip(spectrum_with_gain.astype(np.float64), y_axis_min, y_axis_max)
+        # Normalize: 0 dB maps to 1.0, -dynamic_range dB maps to 0.0
+        mag_normalized = (mag_clamped - y_axis_min) / (y_axis_max - y_axis_min)
+        # Convert to pixel Y position (invert because Y increases downward)
+        y_pixels = (float(screen_height) - float(bottom_margin) - mag_normalized * float(plot_height)).astype(np.int32)
+        
+        # Zip coordinates into list of tuples for pygame
+        points = list(zip(x_pixels.tolist(), y_pixels.tolist()))
+        
+        # Draw the continuous spectrum line in a single C-level call
+        if points and len(points) > 1:
+            # Arguments: surface, color, closed (False = don't connect end to start), points list, width
+            pygame.draw.lines(self.screen, (0, 150, 255), False, points, 4)
                 
         # Draw axes
         # Left axis (Y-axis for magnitude)
