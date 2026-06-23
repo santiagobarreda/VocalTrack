@@ -451,8 +451,12 @@ class LivePitch(BaseAudioVisualizer):
                 logger.error(f"Error during recording: {e}")  # Log error
                 self.stop_recording()  # Stop recording on error
 
-        for finished in self.finished_tracks:  # Draw finished tracks first
-            finished.draw(self.screen)  # Draw finished track group
+        # In fixed mode, draw all finished tracks (they stay at valid positions).
+        # In continuous mode, finished tracks have stale pixel positions that
+        # don't scroll with the window, so skip drawing them.
+        if self.pitch_plot_mode == 'fixed':
+            for finished in self.finished_tracks:  # Draw finished tracks first
+                finished.draw(self.screen)  # Draw finished track group
 
         tmp_sprites = sorted(self.track_points.sprites(), key=lambda pt: pt.t_sec)  # Sort by time
         for i in range(len(tmp_sprites) - 1):  # Draw lines between consecutive points
