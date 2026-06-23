@@ -259,6 +259,9 @@ class LiveSpectrogram(BaseAudioVisualizer):
         # Flip so low freq is at bottom (frequencies are already ordered low to high)
         magnitude_normalized = np.flipud(magnitude_normalized)
 
+        # Map normalized magnitudes to RGB colors via local lookup table.
+        colors = self.colormap_table[magnitude_normalized]
+
         # Map y-coordinate to spectral index (frequency bin index)
         y_indices = (np.arange(self.GUI_HEIGHT) / self.GUI_HEIGHT * len(colors)).astype(np.int32)
         np.clip(y_indices, 0, len(colors) - 1, out=y_indices)
