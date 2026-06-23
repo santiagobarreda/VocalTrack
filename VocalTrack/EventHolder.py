@@ -106,7 +106,7 @@ class EventHolder:
                 elif event.mod & modifier_mask and event.key == pygame.K_h:
                     # Ctrl+H pressed - toggle help overlay
                     self.ctrl_h = event
-                elif event.mod & pygame.KMOD_CTRL and event.key == pygame.K_s:
+                elif event.mod & modifier_mask and event.key == pygame.K_s:
                     # Ctrl+S pressed - save current IPA template
                     self.ctrl_s = event
                 elif event.mod & modifier_mask and event.key == pygame.K_r:
