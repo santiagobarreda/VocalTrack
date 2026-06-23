@@ -1,5 +1,13 @@
-"""PySide6 launcher for liveaudio applications."""
-# Bring in the tools needed to interact with the computer's operating system (like exiting the program)
+"""Thin shim so 'python vocaltrack.py' still works. Real code lives in VocalTrack/_launcher.py."""
+from VocalTrack._launcher import main
+
+if __name__ == "__main__":
+    main()
+
+# ---------------------------------------------------------------------------
+# Everything below is kept for backward compatibility with any code that
+# imports directly from this file (e.g. 'from vocaltrack import LauncherWindow').
+# ---------------------------------------------------------------------------
 import sys
 import os
 
