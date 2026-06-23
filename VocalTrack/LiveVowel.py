@@ -473,6 +473,7 @@ class LiveVowel(BaseAudioVisualizer):
             chunk_ms=self.audio_config.get('chunk_ms'),
             number_of_chunks=self.audio_config.get('number_of_chunks'),
             analysis_config=self.analysis_config,
+            min_rms_db=self.analysis_config.get('min_rms_db'),
             input_device_index=self.input_device_index
         )
         self.audio_processor.start()
