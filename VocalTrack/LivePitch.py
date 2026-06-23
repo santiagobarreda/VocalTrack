@@ -705,6 +705,10 @@ class LivePitch(BaseAudioVisualizer):
             "SPACE - Start/stop recording (push-to-talk)",  # Toggle recording mode
             "+/= - Increase volume threshold",  # Raise RMS dB threshold
             "-/_ - Decrease volume threshold",  # Lower RMS dB threshold
+            "Backspace - Undo last track",  # Remove most recent finished track
+            "Delete    - Clear all tracks",  # Remove all finished tracks
+            "Left click  - Add manual annotation point",  # Place a green marker
+            "Right click - Clear all annotation points",  # Remove all green markers
             "G - Toggle grid overlay",  # Show/hide time and frequency grid
             "H or Ctrl/Cmd+H - Toggle this help",  # Show/hide this overlay
             "ESC - Quit application",  # Exit the program
