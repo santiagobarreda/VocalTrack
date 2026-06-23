@@ -33,7 +33,7 @@ For a detailed description of the **VocalTrack** architecture and signal process
 ### Requirements
 
 - Python >=3.9 and <3.14
-- Microphone/audio input device (head-mounted microphones are require for proper function)
+- Microphone/audio input device (head-mounted microphones are required for proper function)
 - OS audio permissions enabled
 
 ## Quick Start
@@ -114,14 +114,16 @@ Click one of the four launch buttons:
 
 ## Data Export
 
-Files are automatically saved to `recordings/` on exit:
+Files are automatically saved to `recordings/` on exit (depending on options enabled in Recording Settings):
 
 **LiveVowel:**
-- `speaker_YYYY-MM-DD_HHMMSS.wav`: Audio recording
+- `speaker_YYYY-MM-DD_HHMMSS_vowel_original.wav`: Original audio recording (device sample rate)
+- `speaker_YYYY-MM-DD_HHMMSS_vowel_downsampled.wav`: Downsampled audio recording (analysis sample rate)
 - `speaker_YYYY-MM-DD_HHMMSS_formants.csv`: Timestamped F1/F2/F3 data (voiced frames only)
 
 **LivePitch:**
-- `speaker_YYYY-MM-DD_HHMMSS_pitch.wav`: Audio recording
+- `speaker_YYYY-MM-DD_HHMMSS_pitch_original.wav`: Original audio recording (device sample rate)
+- `speaker_YYYY-MM-DD_HHMMSS_pitch_downsampled.wav`: Downsampled audio recording (analysis sample rate)
 - `speaker_YYYY-MM-DD_HHMMSS_pitch.csv`: Timestamped f0 data (voiced frames only)
 
 **Note:** LiveSpectrogram and LiveSpectrum are visualization-only modes and do not export CSV files by default.
