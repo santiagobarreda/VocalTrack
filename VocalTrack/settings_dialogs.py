@@ -8,6 +8,20 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QHBoxLayout, 
     QPushButton, QLineEdit, QComboBox, QLabel, QCheckBox
 )
+from PySide6.QtGui import QIntValidator, QDoubleValidator
+
+# Helper functions for safe type conversion
+def safe_int(text, default=0):
+    try:
+        return int(text)
+    except ValueError:
+        return default
+
+def safe_float(text, default=0.0):
+    try:
+        return float(text)
+    except ValueError:
+        return default
 
 # Bring in the default settings from the main application
 from VocalTrack import config
@@ -154,26 +168,36 @@ class AnalysisSettingsDialog(BaseSettingsDialog):
         # Add the pitch dropdown to the form
         self.form.addRow("Pitch Method:", self.pitch_method_combo)
         
+        # Apply validators to restrict user input to valid ranges/types
+        self.chunk_input.setValidator(QIntValidator(1, 1000, self))
+        self.chunks_input.setValidator(QIntValidator(1, 100, self))
+        self.max_formant_input.setValidator(QIntValidator(1000, 20000, self))
+        self.n_formants_input.setValidator(QDoubleValidator(1.0, 20.0, 2, self))
+        self.min_f0_input.setValidator(QIntValidator(10, 1000, self))
+        self.max_f0_input.setValidator(QIntValidator(50, 2000, self))
+        self.min_confidence_input.setValidator(QDoubleValidator(0.0, 1.0, 4, self))
+        self.min_rms_input.setValidator(QDoubleValidator(-120.0, 0.0, 2, self))
+        
     def get_settings(self):
         """Gathers everything the user typed, packages it, and sends it back to the main app."""
         # Return a dictionary (a labeled list of items)
         return {
-            # Read the text box, convert it to a whole number (int), and label it 'chunk_ms'
-            'chunk_ms': int(self.chunk_input.text()),
+            # Read the text box, convert it safely to an int
+            'chunk_ms': safe_int(self.chunk_input.text(), 5),
             # Read the text box, convert to whole number
-            'number_of_chunks': int(self.chunks_input.text()),
+            'number_of_chunks': safe_int(self.chunks_input.text(), 5),
             # Read the text box, convert to whole number
-            'max_formant': int(self.max_formant_input.text()),
+            'max_formant': safe_int(self.max_formant_input.text(), 5000),
             # Read the text box, convert to a decimal number (float)
-            'n_formants': float(self.n_formants_input.text()),
+            'n_formants': safe_float(self.n_formants_input.text(), 5.5),
             # Read the text box, convert to whole number
-            'min_f0': int(self.min_f0_input.text()),
+            'min_f0': safe_int(self.min_f0_input.text(), 60),
             # Read the text box, convert to whole number
-            'max_f0': int(self.max_f0_input.text()),
+            'max_f0': safe_int(self.max_f0_input.text(), 300),
             # Read the text box, convert to decimal number
-            'min_confidence': float(self.min_confidence_input.text()),
+            'min_confidence': safe_float(self.min_confidence_input.text(), 0.2),
             # Read the text box, convert to decimal number
-            'min_rms_db': float(self.min_rms_input.text()),
+            'min_rms_db': safe_float(self.min_rms_input.text(), -45.0),
             # Read the currently selected text from the formant dropdown menu
             'formant_method': self.formant_method_combo.currentText(),
             # Read the currently selected text from the pitch dropdown menu
@@ -246,17 +270,26 @@ class SmootherSettingsDialog(BaseSettingsDialog):
         # Add to form
         self.form.addRow("Velocity Power:", self.velocity_power_input)
         
+        # Apply input validators
+        self.memory_input.setValidator(QIntValidator(1, 1000, self))
+        self.stability_input.setValidator(QDoubleValidator(0.0, 100.0, 4, self))
+        self.skip_input.setValidator(QIntValidator(0, 1000, self))
+        self.euro_min_cutoff_input.setValidator(QDoubleValidator(0.0, 100.0, 4, self))
+        self.euro_beta_input.setValidator(QDoubleValidator(0.0, 100.0, 4, self))
+        self.euro_dcutoff_input.setValidator(QDoubleValidator(0.0, 100.0, 4, self))
+        self.velocity_power_input.setValidator(QDoubleValidator(0.0, 100.0, 4, self))
+        
     def get_settings(self):
         """Gathers the smoother settings and packages them up."""
         return {
-            'memory_n': int(self.memory_input.text()),
-            'stability_threshold': float(self.stability_input.text()),
-            'skip_tolerance': int(self.skip_input.text()),
+            'memory_n': safe_int(self.memory_input.text(), 5),
+            'stability_threshold': safe_float(self.stability_input.text(), 0.32),
+            'skip_tolerance': safe_int(self.skip_input.text(), 2),
             'use_euro_filter': self.use_euro_filter_checkbox.isChecked(),
-            'euro_min_cutoff': float(self.euro_min_cutoff_input.text()),
-            'euro_beta': float(self.euro_beta_input.text()),
-            'euro_dcutoff': float(self.euro_dcutoff_input.text()),
-            'velocity_power': float(self.velocity_power_input.text()),
+            'euro_min_cutoff': safe_float(self.euro_min_cutoff_input.text(), 0.05),
+            'euro_beta': safe_float(self.euro_beta_input.text(), 1.5),
+            'euro_dcutoff': safe_float(self.euro_dcutoff_input.text(), 0.5),
+            'velocity_power': safe_float(self.velocity_power_input.text(), 1.5),
         }
 
 
@@ -323,6 +356,13 @@ class PlottingSettingsDialog(BaseSettingsDialog):
         # Add dropdown to form
         self.form.addRow("Frequency Scale:", self.freq_scale_combo)
         
+        # Apply input validators
+        self.f1_min_input.setValidator(QDoubleValidator(0.0, 10000.0, 2, self))
+        self.f1_max_input.setValidator(QDoubleValidator(0.0, 10000.0, 2, self))
+        self.f2_min_input.setValidator(QDoubleValidator(0.0, 20000.0, 2, self))
+        self.f2_max_input.setValidator(QDoubleValidator(0.0, 20000.0, 2, self))
+        self.fps_input.setValidator(QIntValidator(1, 240, self))
+        
     def get_settings(self):
         """Gathers settings and translates dropdown choices back into code words."""
         # Create a list of the code words for display modes
@@ -331,11 +371,11 @@ class PlottingSettingsDialog(BaseSettingsDialog):
         scales = ["log", "linear"]
         return {
             # Package the two F1 text boxes together as a pair (tuple) of decimal numbers
-            'f1_range': (float(self.f1_min_input.text()), float(self.f1_max_input.text())),
+            'f1_range': (safe_float(self.f1_min_input.text(), 200.0), safe_float(self.f1_max_input.text(), 1100.0)),
             # Package the two F2 text boxes together as a pair
-            'f2_range': (float(self.f2_min_input.text()), float(self.f2_max_input.text())),
+            'f2_range': (safe_float(self.f2_min_input.text(), 500.0), safe_float(self.f2_max_input.text(), 2700.0)),
             # Convert FPS to a whole number
-            'fps': int(self.fps_input.text()),
+            'fps': safe_int(self.fps_input.text(), 60),
             # Look up the code word based on which dropdown item the user clicked
             'display_mode': modes[self.display_mode_combo.currentIndex()],
             # Look up the scale code word based on the dropdown
@@ -391,19 +431,24 @@ class PitchPlotSettingsDialog(BaseSettingsDialog):
         # Add dropdown to form
         self.form.addRow("Frequency Scale:", self.freq_scale_combo)
         
+        # Apply input validators
+        self.min_f0_input.setValidator(QIntValidator(10, 1000, self))
+        self.max_f0_input.setValidator(QIntValidator(20, 3000, self))
+        self.window_width_input.setValidator(QDoubleValidator(0.1, 100.0, 2, self))
+        
     def get_settings(self):
         """Gathers settings and translates dropdown choices."""
         # List of scale code words
         scales = ["log", "linear"]
         return {
             # Convert min pitch to whole number
-            'min_f0': int(self.min_f0_input.text()),
+            'min_f0': safe_int(self.min_f0_input.text(), 75),
             # Convert max pitch to whole number
-            'max_f0': int(self.max_f0_input.text()),
+            'max_f0': safe_int(self.max_f0_input.text(), 500),
             # A tiny inline logic statement: if dropdown is 0, use "fixed", otherwise use "continuous"
             'pitch_plot_mode': "fixed" if self.mode_combo.currentIndex() == 0 else "continuous",
             # Convert seconds to a decimal number
-            'pitch_display_seconds': float(self.window_width_input.text()),
+            'pitch_display_seconds': safe_float(self.window_width_input.text(), 5.0),
             # Look up the scale code word based on dropdown index
             'freq_scale': scales[self.freq_scale_combo.currentIndex()],
         }
@@ -468,25 +513,34 @@ class SpectrogramSettingsDialog(BaseSettingsDialog):
         # Add to form
         self.form.addRow("Padding Length (ms):", self.padding_length_input)
         
+        # Apply input validators
+        self.max_freq_input.setValidator(QIntValidator(1000, 48000, self))
+        self.display_seconds_input.setValidator(QDoubleValidator(0.1, 100.0, 2, self))
+        self.fps_input.setValidator(QIntValidator(1, 240, self))
+        self.dynamic_range_input.setValidator(QIntValidator(10, 150, self))
+        self.chunk_ms_input.setValidator(QDoubleValidator(0.1, 1000.0, 2, self))
+        self.number_of_chunks_input.setValidator(QIntValidator(1, 100, self))
+        self.padding_length_input.setValidator(QDoubleValidator(0.0, 1000.0, 2, self))
+        
     def get_settings(self):
         """Gathers settings for the spectrogram."""
         return {
             # Convert max frequency to whole number
-            'max_freq': int(self.max_freq_input.text()),
+            'max_freq': safe_int(self.max_freq_input.text(), 5000),
             # Convert display width to decimal number
-            'display_seconds': float(self.display_seconds_input.text()),
+            'display_seconds': safe_float(self.display_seconds_input.text(), 1.0),
             # Convert FPS to whole number
-            'fps': int(self.fps_input.text()),
+            'fps': safe_int(self.fps_input.text(), 60),
             # For the color map, just grab the actual text string directly
             'colormap': self.colormap_combo.currentText(),
             # Convert contrast number to whole number
-            'dynamic_range': int(self.dynamic_range_input.text()),
+            'dynamic_range': safe_int(self.dynamic_range_input.text(), 40),
             # Convert chunk size to decimal
-            'chunk_ms': float(self.chunk_ms_input.text()),
+            'chunk_ms': safe_float(self.chunk_ms_input.text(), 15.0),
             # Convert chunk count to whole number
-            'number_of_chunks': int(self.number_of_chunks_input.text()),
+            'number_of_chunks': safe_int(self.number_of_chunks_input.text(), 3),
             # Convert padding to decimal
-            'padding_length_ms': float(self.padding_length_input.text()),
+            'padding_length_ms': safe_float(self.padding_length_input.text(), 20.0),
         }
 
 
@@ -536,23 +590,32 @@ class SpectrumSettingsDialog(BaseSettingsDialog):
         # Add to form
         self.form.addRow("Smoothing (0-1):", self.smoothing_input)
         
+        # Apply input validators
+        self.max_freq_input.setValidator(QIntValidator(1000, 48000, self))
+        self.dynamic_range_input.setValidator(QIntValidator(10, 150, self))
+        self.chunk_ms_input.setValidator(QDoubleValidator(0.1, 1000.0, 2, self))
+        self.number_of_chunks_input.setValidator(QIntValidator(1, 100, self))
+        self.fps_input.setValidator(QIntValidator(1, 240, self))
+        self.padding_length_input.setValidator(QDoubleValidator(0.0, 1000.0, 2, self))
+        self.smoothing_input.setValidator(QDoubleValidator(0.0, 1.0, 4, self))
+        
     def get_settings(self):
         """Gathers settings for the spectrum line graph."""
         return {
             # Convert max freq to whole number
-            'max_freq': int(self.max_freq_input.text()),
+            'max_freq': safe_int(self.max_freq_input.text(), 5000),
             # Convert dynamic range to whole number
-            'dynamic_range': int(self.dynamic_range_input.text()),
+            'dynamic_range': safe_int(self.dynamic_range_input.text(), 40),
             # Convert chunk size to decimal
-            'chunk_ms': float(self.chunk_ms_input.text()),
+            'chunk_ms': safe_float(self.chunk_ms_input.text(), 15.0),
             # Convert chunk count to whole number
-            'number_of_chunks': int(self.number_of_chunks_input.text()),
+            'number_of_chunks': safe_int(self.number_of_chunks_input.text(), 3),
             # Convert FPS to whole number
-            'fps': int(self.fps_input.text()),
+            'fps': safe_int(self.fps_input.text(), 60),
             # Convert padding size to decimal
-            'padding_length_ms': float(self.padding_length_input.text()),
+            'padding_length_ms': safe_float(self.padding_length_input.text(), 20.0),
             # Convert line smoothing value to decimal
-            'smoothing': float(self.smoothing_input.text()),
+            'smoothing': safe_float(self.smoothing_input.text(), 0.7),
         }
 
 

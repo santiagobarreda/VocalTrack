@@ -71,6 +71,13 @@ class AudioProcessor(QThread):
         self.analysis_sample_rate = sample_rate
         self.device_sample_rate = sample_rate
         self.recording_sample_rate = sample_rate
+        
+        # Safely handle default parameters if None is passed
+        if chunk_ms is None:
+            chunk_ms = (analysis_config or {}).get('chunk_ms') or 20
+        if number_of_chunks is None:
+            number_of_chunks = (analysis_config or {}).get('number_of_chunks') or 3
+            
         # Store chunk duration in milliseconds
         self.chunk_ms = chunk_ms
         # Store number of chunks to stitch together for each analysis window
