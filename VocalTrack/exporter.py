@@ -99,7 +99,7 @@ def save_pitch_csv(filename, pitch_data, min_f0=None, max_f0=None):
     Args:
         filename (str): Output CSV filename
         pitch_data (list): List of dicts with keys:
-            'time_ms', 'f0', 'voicing', optionally 'track'
+            'time_ms', 'f0', 'f0_smoothed', 'voicing', optionally 'track'
     """
     # Create output directory if it doesn't exist (mkdir -p behavior)
     os.makedirs(os.path.dirname(filename), exist_ok=True)
@@ -117,8 +117,8 @@ def save_pitch_csv(filename, pitch_data, min_f0=None, max_f0=None):
         # Get maximum f0 threshold from config (default infinity if not specified)
         max_f0 = config.ANALYSIS_CONFIG.get('max_f0', float('inf'))
 
-    # Determine columns: always include time_ms, f0, voicing; add 'track' if present in any row
-    columns = ['time_ms', 'f0', 'voicing']
+    # Determine columns: always include time_ms, f0, f0_smoothed, voicing; add 'track' if present in any row
+    columns = ['time_ms', 'f0', 'f0_smoothed', 'voicing']
     if any('track' in row for row in pitch_data):
         columns = ['track'] + columns
     with open(filename, 'w', newline='', encoding='utf-8') as f:

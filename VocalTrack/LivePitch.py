@@ -421,7 +421,8 @@ class LivePitch(BaseAudioVisualizer):
                             if self.smoother.pitch_use:  # Only plot stable points
                                 self.pitch_log.append({  # Add row to pitch log
                                     'time_ms': int(elapsed_time * 1000),  # Timestamp in ms
-                                    'f0': self.smoother.plot_f0,  # Smoothed f0
+                                    'f0': self.sound.f0,  # Raw f0 from Sound object
+                                    'f0_smoothed': self.smoother.plot_f0,  # Smoothed f0
                                     'voicing': int(self.sound.voicing),  # Voicing flag
                                 })  # End log row
 
