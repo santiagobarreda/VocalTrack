@@ -98,6 +98,7 @@ SMOOTHER_CONFIG = {
     'skip_tolerance': 2,  # frames to skip before resetting track
     'hold_unvoiced': True,  # GitHub baseline (was False - broke tracks on voicing drops)
     # 1-Euro filter parameters for adaptive smoothing
+    'use_euro_filter': True,  # Enable/disable 1-Euro temporal smoothing of formants and pitch
     'euro_min_cutoff': 0.05,  # Baseline cutoff frequency (Hz) - lower = smoother
     'euro_beta': 1.5,  # Responsiveness to velocity - higher = more adaptive
     'euro_dcutoff': 0.5,  # Cutoff for velocity smoothing - lower = smoother velocity

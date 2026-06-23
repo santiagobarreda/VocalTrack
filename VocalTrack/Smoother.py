@@ -14,8 +14,8 @@ class Smoother:
     """
     
     def __init__(self, memory_n=5, stability_threshold=0.15, skip_tolerance=2,
-                 euro_min_cutoff=0.05, euro_beta=1.5, euro_dcutoff=0.5, 
-                 velocity_power=1.5, hold_unvoiced=True):
+                 use_euro_filter=True, euro_min_cutoff=0.05, euro_beta=1.5,
+                 euro_dcutoff=0.5, velocity_power=1.5, hold_unvoiced=True):
         """Initialize the smoother with empty buffers.
         
         Args:
@@ -25,6 +25,7 @@ class Smoother:
             euro_min_cutoff (float, optional): Baseline cutoff for 1-Euro. Defaults to 0.05.
             euro_beta (float, optional): Responsiveness multiplier for 1-Euro. Defaults to 1.5.
             euro_dcutoff (float, optional): Velocity smoothing cutoff for 1-Euro. Defaults to 0.5.
+            use_euro_filter (bool, optional): Apply 1-Euro temporal smoothing. Defaults to True.
             velocity_power (float, optional): Non-linear exponent for adaptive snap. Defaults to 1.5.
             hold_unvoiced (bool, optional): Hold last value on brief unvoiced frames. Defaults to True.
         """
@@ -76,6 +77,8 @@ class Smoother:
         self._pitch_euro_prev_time = None  # Last timestamp for 1-Euro filter (pitch only)
         self._pitch_euro_x_prev = 1.0  # Previous filtered pitch value in log space
         self._pitch_euro_dx_prev = 0.0  # Previous pitch velocity estimate (df0/dt)
+
+        self.use_euro_filter = use_euro_filter  # When False, skip 1-Euro step and use raw stable values
 
         # Parameterized 1-Euro filter constants (tune responsiveness vs smoothness)
         self.euro_min_cutoff = euro_min_cutoff  # Baseline cutoff frequency (Hz) - lower = smoother
@@ -242,8 +245,9 @@ class Smoother:
         if self.valid_pitch_frames == self.memory_n and errors == 0:  # All checks passed
             self.pitch_use = True  # Mark f0 as trustworthy for plotting/export
 
-            # Apply 1-Euro filter to smooth trajectory in log space
-            self.plot_f0 = self._apply_1euro_filter_scalar(self.plot_f0)  # Filter log(f0+1)
+            # Optionally apply 1-Euro filter to smooth trajectory in log space
+            if self.use_euro_filter:
+                self.plot_f0 = self._apply_1euro_filter_scalar(self.plot_f0)
             self.plot_f0 = numpy.exp(self.plot_f0) - 1  # Convert back to linear Hz for display
             self.last_valid_f0 = self.plot_f0  # Store as fallback for future bad frames
             self.pitch_skipped = 0  # Reset skip counter (stability is good)
@@ -331,10 +335,10 @@ class Smoother:
             self.use = True  # Mark formants as trustworthy for plotting/export
             self.track.append(self.track_number)  # Log current track ID for this frame
       
-            # Apply 1-Euro filter to all three formants jointly (in log space)
-            values = [self.plot_f1, self.plot_f2, self.plot_f0]  # Bundle into list
-            filtered_values = self._apply_1euro_filter(values)  # Apply filter (returns 3-element list)
-            self.plot_f1, self.plot_f2, self.plot_f0 = filtered_values  # Unpack filtered values
+            # Optionally apply 1-Euro filter to all three formants jointly (in log space)
+            if self.use_euro_filter:
+                values = [self.plot_f1, self.plot_f2, self.plot_f0]  # Bundle into list
+                self.plot_f1, self.plot_f2, self.plot_f0 = self._apply_1euro_filter(values)
 
             # Convert from log space back to linear Hz for display and storage
             self.plot_f1 = numpy.exp(self.plot_f1) - 1  # log(F1+1) → F1 in Hz

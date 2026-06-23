@@ -212,14 +212,20 @@ class SmootherSettingsDialog(BaseSettingsDialog):
         separator.setStyleSheet("color: gray;")
         # Add the dividing line to the form
         self.form.addRow(separator)
-        
+
+        # Checkbox to enable/disable 1-Euro temporal smoothing
+        euro_enabled = saved.get('use_euro_filter', config.SMOOTHER_CONFIG.get('use_euro_filter', True))
+        self.use_euro_filter_checkbox = QCheckBox()
+        self.use_euro_filter_checkbox.setChecked(bool(euro_enabled))
+        self.form.addRow("Enable 1-Euro filter:", self.use_euro_filter_checkbox)
+
         # Create a bold text label to introduce the 1-Euro math filter section
         euro_label = QLabel("1-Euro Filter Parameters:")
         # Make it bold
         euro_label.setStyleSheet("font-weight: bold;")
         # Add the header to the form
         self.form.addRow(euro_label)
-        
+
         # Text box for minimum cutoff (how much it smooths when the voice is steady)
         self.euro_min_cutoff_input = QLineEdit(str(saved.get('euro_min_cutoff', config.SMOOTHER_CONFIG.get('euro_min_cutoff', 0.05))))
         # Add to form
@@ -243,19 +249,13 @@ class SmootherSettingsDialog(BaseSettingsDialog):
     def get_settings(self):
         """Gathers the smoother settings and packages them up."""
         return {
-            # Convert memory to a whole number
             'memory_n': int(self.memory_input.text()),
-            # Convert stability to a decimal number
             'stability_threshold': float(self.stability_input.text()),
-            # Convert skip tolerance to a whole number
             'skip_tolerance': int(self.skip_input.text()),
-            # Convert math parameter to decimal
+            'use_euro_filter': self.use_euro_filter_checkbox.isChecked(),
             'euro_min_cutoff': float(self.euro_min_cutoff_input.text()),
-            # Convert math parameter to decimal
             'euro_beta': float(self.euro_beta_input.text()),
-            # Convert math parameter to decimal
             'euro_dcutoff': float(self.euro_dcutoff_input.text()),
-            # Convert math parameter to decimal
             'velocity_power': float(self.velocity_power_input.text()),
         }
 
