@@ -57,11 +57,11 @@ def save_wav(filename, samples, sample_rate, normalize=True):
 
 def save_formants_csv(filename, formant_data):
     """Save timestamped formant analyses to CSV.
-    
+
     Args:
         filename (str): Output CSV filename
         formant_data (list): List of dicts with keys:
-            'time_ms', 'f0', 'f1', 'f2', 'f3', 'voicing', 'track_number'
+            'time_ms', 'f0', 'f1', 'f1_smoothed', 'f2', 'f2_smoothed', 'f3', 'voicing', 'track_number'
     """
     # Create output directory if it doesn't exist (mkdir -p behavior)
     os.makedirs(os.path.dirname(filename), exist_ok=True)
@@ -78,7 +78,7 @@ def save_formants_csv(filename, formant_data):
     # Open CSV file for writing with UTF-8 encoding
     with open(filename, 'w', newline='', encoding='utf-8') as f:
         # Create CSV dict writer with specified column names
-        writer = csv.DictWriter(f, fieldnames=['time_ms', 'f0', 'f1', 'f2', 'f3', 'voicing', 'track_number'])
+        writer = csv.DictWriter(f, fieldnames=['time_ms', 'f0', 'f1', 'f1_smoothed', 'f2', 'f2_smoothed', 'f3', 'voicing', 'track_number'])
         # Write CSV header row with column names
         writer.writeheader()
         # Loop through each formant measurement dictionary

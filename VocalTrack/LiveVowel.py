@@ -332,8 +332,10 @@ class LiveVowel(BaseAudioVisualizer):
                 self.formant_log.append({
                     'time_ms': int(elapsed_time * 1000),  # Time in milliseconds
                     'f0': self.sound.f0,  # Raw pitch from Sound object
-                    'f1': self.smoother.plot_f1,  # Smoothed F1 (first formant)
-                    'f2': self.smoother.plot_f2,  # Smoothed F2 (second formant)
+                    'f1': self.sound.f1,  # Raw F1 (first formant, unsmoothed)
+                    'f1_smoothed': self.smoother.plot_f1,  # Smoothed F1 (first formant)
+                    'f2': self.sound.f2,  # Raw F2 (second formant, unsmoothed)
+                    'f2_smoothed': self.smoother.plot_f2,  # Smoothed F2 (second formant)
                     'f3': self.sound.f3,  # Raw F3 (third formant, not smoothed)
                     'voicing': int(self.sound.voicing),  # 1 if voiced, 0 if unvoiced
                     'track_number': self.smoother.track_number,  # Track ID for grouping contiguous speech
