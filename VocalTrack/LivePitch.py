@@ -172,8 +172,14 @@ class LivePitch(BaseAudioVisualizer):
         # Don't clear audio export buffers - accumulate across all tracks
         self.pitch_log = []  # Clear pitch log for this track
         # Don't create new session_name - use the one from __init__ for all tracks
-        self.smoother._f0_history = []  # Reset smoother history
-        self.smoother._f0_smooth = None  # Reset smoother state
+        self.smoother.f0_history = numpy.full(self.smoother.memory_n, 1)  # Reset smoother history buffer
+        self.smoother._pitch_euro_prev_time = None  # Reset 1-Euro filter time tracker
+        self.smoother._pitch_euro_x_prev = 1.0  # Reset 1-Euro filter position
+        self.smoother._pitch_euro_dx_prev = 0.0  # Reset 1-Euro filter velocity
+        self.smoother.pitch_skipped = 0  # Reset skip counter
+        self.smoother.valid_pitch_frames = 0  # Reset warm-up frame counter
+        self.smoother.plot_f0 = 1.0  # Reset plot frequency
+        self.smoother.last_valid_f0 = 1.0  # Reset last valid frequency
         self.smoother.pitch_use = False  # Reset smoother gating
 
         self.audio_processor = AudioProcessor(  # Create audio processor
@@ -404,8 +410,14 @@ class LivePitch(BaseAudioVisualizer):
                             self.started = False  # Reset started flag
                             self.voicing_run = 0  # Reset voiced counter
                             self.unvoiced_run = 0  # Reset unvoiced counter
-                            self.smoother._f0_history = []  # Reset smoother history
-                            self.smoother._f0_smooth = None  # Reset smoother state
+                            self.smoother.f0_history = numpy.full(self.smoother.memory_n, 1)  # Reset smoother history buffer
+                            self.smoother._pitch_euro_prev_time = None  # Reset 1-Euro filter time tracker
+                            self.smoother._pitch_euro_x_prev = 1.0  # Reset 1-Euro filter position
+                            self.smoother._pitch_euro_dx_prev = 0.0  # Reset 1-Euro filter velocity
+                            self.smoother.pitch_skipped = 0  # Reset skip counter
+                            self.smoother.valid_pitch_frames = 0  # Reset warm-up frame counter
+                            self.smoother.plot_f0 = 1.0  # Reset plot frequency
+                            self.smoother.last_valid_f0 = 1.0  # Reset last valid frequency
                             self.smoother.pitch_use = False  # Reset smoother gate
                             # Stop recording and require spacebar release before restart
                             self.stop_recording()  # Stop audio processor
@@ -442,8 +454,14 @@ class LivePitch(BaseAudioVisualizer):
                                 self.started = False  # Reset started flag
                                 self.voicing_run = 0  # Reset voiced counter
                                 self.unvoiced_run = 0  # Reset unvoiced counter
-                                self.smoother._f0_history = []  # Reset smoother history
-                                self.smoother._f0_smooth = None  # Reset smoother state
+                                self.smoother.f0_history = numpy.full(self.smoother.memory_n, 1)  # Reset smoother history buffer
+                                self.smoother._pitch_euro_prev_time = None  # Reset 1-Euro filter time tracker
+                                self.smoother._pitch_euro_x_prev = 1.0  # Reset 1-Euro filter position
+                                self.smoother._pitch_euro_dx_prev = 0.0  # Reset 1-Euro filter velocity
+                                self.smoother.pitch_skipped = 0  # Reset skip counter
+                                self.smoother.valid_pitch_frames = 0  # Reset warm-up frame counter
+                                self.smoother.plot_f0 = 1.0  # Reset plot frequency
+                                self.smoother.last_valid_f0 = 1.0  # Reset last valid frequency
                                 self.smoother.pitch_use = False  # Reset smoother gate
 
                     self.update_pitch_points(elapsed_time)  # Update point positions
