@@ -136,6 +136,10 @@ class LiveSpectrum(BaseAudioVisualizer):
         self.sounds_processed_this_frame = 0  # Number of sounds processed this frame
         self.gain_offset_db = 0.0  # Gain offset in dB (adjustable with +/-)
 
+        # Initialize default fonts to avoid recreating them on every frame (heavy OS lookup)
+        self.font_14 = pygame.font.SysFont('Arial', 14)
+        self.font_18_bold = pygame.font.SysFont('Arial', 18, bold=True)
+
         # Start the main event loop (blocking)
         self.run()
 
@@ -315,7 +319,7 @@ class LiveSpectrum(BaseAudioVisualizer):
                          (screen_width - right_margin, screen_height - bottom_margin), 2)
 
         # Draw frequency axis labels
-        font = pygame.font.SysFont('Arial', 14)
+        font = self.font_14
         freq_labels = [0, self.max_freq // 4, self.max_freq // 2, 3 * self.max_freq // 4, self.max_freq]
         for freq in freq_labels:
             x_pixel = left_margin + (freq / self.max_freq) * plot_width
@@ -335,7 +339,7 @@ class LiveSpectrum(BaseAudioVisualizer):
             self.screen.blit(label_text, text_rect)
 
         # Draw title and info
-        title_font = pygame.font.SysFont('Arial', 18, bold=True)
+        title_font = self.font_18_bold
         title = title_font.render("Frequency Spectrum", True, (0, 0, 0))
         title_rect = title.get_rect(topleft=(20, 10))
         self.screen.blit(title, title_rect)
@@ -399,7 +403,7 @@ class LiveSpectrum(BaseAudioVisualizer):
             "ESC: Quit"
         ]
         
-        font = pygame.font.SysFont('Arial', 14)
+        font = self.font_14
         line_height = 25
         start_y = 80
         bg_color = (240, 240, 240)

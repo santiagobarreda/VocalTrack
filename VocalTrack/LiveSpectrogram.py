@@ -203,6 +203,13 @@ class LiveSpectrogram(BaseAudioVisualizer):
         self.WHITE = config.COLORS['white']
         # Define black for clearing and background rendering
         self.BLACK = config.COLORS['black']
+
+        # Initialize default fonts to avoid recreating them on every frame (heavy OS lookup)
+        self.font_16 = pygame.font.SysFont('Arial', 16)
+        self.font_14 = pygame.font.SysFont('Arial', 14)
+        self.font_24_bold = pygame.font.SysFont('Arial', 24, bold=True)
+        self.font_18 = pygame.font.SysFont('Arial', 18)
+        self.font_20 = pygame.font.SysFont('Arial', 20)
         
         # Enable spectrum computation in Sound objects (raw magnitude in dB, no processing)
         self.analysis_config['compute_spectrum'] = True
@@ -316,8 +323,8 @@ class LiveSpectrogram(BaseAudioVisualizer):
         Renders horizontal lines at 1 kHz intervals and adds frequency labels
         on the left side for reference. Makes it easy to estimate frequencies by sight.
         """
-        # Create font for rendering frequency labels (16pt Arial, suitable for read on screen)
-        font = pygame.font.SysFont('Arial', 16)
+        # Use cached font to avoid expensive OS lookups
+        font = self.font_16
         
         # Draw horizontal grid lines every 1000 Hz (1 kHz)
         # This provides visual reference grid across entire spectrogram
@@ -339,8 +346,8 @@ class LiveSpectrogram(BaseAudioVisualizer):
         Dynamically calculates interval to always show 4-5 grid lines regardless
         of display_seconds setting. Adds time labels at the bottom for reference.
         """
-        # Create font for rendering time labels (14pt Arial, suitable for reading)
-        font = pygame.font.SysFont('Arial', 14)
+        # Use cached font to avoid expensive OS lookups
+        font = self.font_14
         
         # Calculate appropriate time interval to always show 4-5 grid lines
         # Target: 4-5 lines, so interval = display_seconds / 4.5
@@ -394,9 +401,9 @@ class LiveSpectrogram(BaseAudioVisualizer):
         # Draw border around overlay
         pygame.draw.rect(overlay_surface, (200, 200, 200), (0, 0, overlay_width, overlay_height), 2)
         
-        # Create fonts for title and help text
-        title_font = pygame.font.SysFont('Arial', 24, bold=True)
-        text_font = pygame.font.SysFont('Arial', 18)
+        # Use cached fonts to avoid expensive OS lookups
+        title_font = self.font_24_bold
+        text_font = self.font_18
         
         # Draw title
         title = title_font.render('Keyboard Controls', True, (255, 255, 255))
@@ -427,8 +434,8 @@ class LiveSpectrogram(BaseAudioVisualizer):
             
             y_offset += line_height
         
-        # Draw footer with current settings
-        footer_font = pygame.font.SysFont('Arial', 16)
+        # Use cached font to avoid expensive OS lookups
+        footer_font = self.font_16
         footer_y = overlay_height - 50
         
         settings_text = footer_font.render(
@@ -540,7 +547,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
         """
         if self.dynamic_range != self.spec_config['dynamic_range']:
             y_pos = 10
-            font = pygame.font.SysFont('Arial', 20)
+            font = self.font_20
             dr_text = font.render(f'Dynamic Range: {self.dynamic_range} dB', True, (255, 255, 255))
             text_rect = dr_text.get_rect(topleft=(10, y_pos))
             bg_rect = text_rect.inflate(10, 6)
@@ -557,7 +564,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
             y_pos = 10
             if self.dynamic_range != self.spec_config['dynamic_range']:
                 y_pos += 35
-            font = pygame.font.SysFont('Arial', 20)
+            font = self.font_20
             gain_text = font.render(f'Gain: {self.gain_db} dB', True, (255, 255, 255))
             text_rect = gain_text.get_rect(topleft=(10, y_pos))
             bg_rect = text_rect.inflate(10, 6)
@@ -567,7 +574,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
 
     def draw_mode_status(self):
         """Draw top-left status text for mode behavior clarity."""
-        font = pygame.font.SysFont('Arial', 20)
+        font = self.font_20
         mode_text = "Mode: LiveSpectrogram (recording off)" if not self.recording else "Mode: LiveSpectrogram (recording on)"
         text_surface = font.render(mode_text, True, (255, 255, 255))
         text_rect = text_surface.get_rect(topright=(self.GUI_WIDTH - 10, 10))

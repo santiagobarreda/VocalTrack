@@ -145,6 +145,9 @@ class LivePitch(BaseAudioVisualizer):
         # Calculate grid steps for display axes
         self.calculate_grid_steps()
 
+        # Initialize default fonts to avoid recreating them on every frame (heavy OS lookup)
+        self.default_font_18 = pygame.font.SysFont(None, 18)
+
         logger.info("LivePitch initialized")
         self.run()
 
@@ -682,7 +685,7 @@ class LivePitch(BaseAudioVisualizer):
         # Define visual styling for grid elements
         grid_color = (50, 50, 50)  # Dark gray for grid lines (subtle)
         label_color = (100, 100, 100)  # Medium gray for label text (readable but not dominant)
-        font = pygame.font.SysFont(None, 18)  # System font at 18pt for axis labels
+        font = self.default_font_18  # Use cached system font at 18pt for axis labels
         
         # Draw vertical time grid lines using calculated step
         t = 0.0  # Start at time zero (right edge is most recent)

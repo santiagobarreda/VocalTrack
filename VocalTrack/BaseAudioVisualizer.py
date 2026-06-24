@@ -96,6 +96,9 @@ class BaseAudioVisualizer:
         # Log that the base setup was successful
         logger.debug(f"BaseAudioVisualizer initialized: {app_title}")
 
+        # Initialize default fonts to avoid recreating them on every frame (heavy OS lookup)
+        self.default_font_28 = pygame.font.SysFont(None, 28)
+
     def handle_base_events(self, event_holder):
         """Translates keyboard presses that do the exact same thing in every visualizer.
         
@@ -214,8 +217,8 @@ class BaseAudioVisualizer:
         
         # If we have text to show, AND the 1-second timer hasn't run out yet...
         if self.min_rms_display_text and current_time < self.min_rms_display_until:
-            # Create a font that is large enough to read easily
-            font = pygame.font.SysFont(None, 28)
+            # Use cached font to avoid expensive OS lookups
+            font = self.default_font_28
             # Create an image of the text colored black
             text_surface = font.render(self.min_rms_display_text, True, (0, 0, 0))
             # Get the exact mathematical dimensions of that text image

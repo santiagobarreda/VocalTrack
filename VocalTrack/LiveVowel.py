@@ -127,6 +127,12 @@ class LiveVowel(BaseAudioVisualizer):
         self.current_track_number = 0  # Matches smoother's initial track_number
         # Track whether a valid point was created in the current frame
         self.point_created_this_frame = False
+
+        # Initialize default fonts to avoid recreating them on every frame (heavy OS lookup)
+        self.font_20 = pygame.font.SysFont('Arial', 20)
+        self.font_16 = pygame.font.SysFont(None, 16)
+        self.font_32 = pygame.font.SysFont(None, 32)
+        self.font_24 = pygame.font.SysFont(None, 24)
         # Track previous smoother.use state to detect when track becomes unstable
         self.last_smoother_use = False
         
@@ -653,7 +659,7 @@ class LiveVowel(BaseAudioVisualizer):
 
     def draw_mode_status(self):
         """Draw top-left mode status to make recording state explicit."""
-        font = pygame.font.SysFont('Arial', 20)
+        font = self.font_20
         rec_str = "RECORDING" if self.recording_active else "idle"
         pick_str = " | picker ON" if self.state == "menu" else ""
         mode_text = f"Mode: {rec_str}{pick_str}"
@@ -707,8 +713,8 @@ class LiveVowel(BaseAudioVisualizer):
         # Check if display time window is still active
         # min_rms_display_until is set to pygame.time.get_ticks() + 1000 when adjusted
         if hasattr(self, 'min_rms_display_until') and pygame.time.get_ticks() < self.min_rms_display_until:
-            # Create font for text rendering (20 point Arial, matches other indicators)
-            font = pygame.font.SysFont('Arial', 20)
+            # Use cached font
+            font = self.font_20
             # Render text: white foreground, using stored display text from adjust_min_rms()
             display_text = font.render(self.min_rms_display_text, True, (255, 255, 255))
             # Get text rect and create slightly larger background rect
@@ -730,7 +736,7 @@ class LiveVowel(BaseAudioVisualizer):
         
         grid_color = (200, 200, 200)  # Light gray grid lines
         label_color = (120, 120, 120)  # Gray text for labels
-        font = pygame.font.SysFont(None, 16)  # Small font for labels
+        font = self.font_16  # Use cached small font for labels
         
         # Draw F1 grid lines (horizontal reference lines)
         f1_step = 100  # Hz per grid line
@@ -769,9 +775,9 @@ class LiveVowel(BaseAudioVisualizer):
         overlay_surface.fill(overlay_color)
         self.screen.blit(overlay_surface, (0, 0))
         
-        # Help text
-        font_big = pygame.font.SysFont(None, 32)
-        font_normal = pygame.font.SysFont(None, 24)
+        # Use cached fonts
+        font_big = self.font_32
+        font_normal = self.font_24
         text_color = (255, 255, 255)
         
         help_text = [
