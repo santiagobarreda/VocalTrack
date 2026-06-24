@@ -32,7 +32,7 @@ For a detailed description of the **VocalTrack** architecture and signal process
 
 ### Requirements
 
-- Python >=3.9 and <3.14
+- Python >=3.9 and <3.15
 - Microphone/audio input device (head-mounted microphones are required for proper function)
 - OS audio permissions enabled
 

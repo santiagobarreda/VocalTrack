@@ -72,7 +72,7 @@ Settings are loaded on startup and applied to both launcher dialogs and runtime 
 
 ## System Requirements
 
-- Python >=3.9 and <3.14
+- Python >=3.9 and <3.15
 - Working (preferably head mounted) microphone/audio input
 - OS audio permissions enabled
 - ~100MB disk space for installation (mostly of dependencies)
