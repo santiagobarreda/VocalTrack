@@ -2,6 +2,8 @@
 import logging
 # Import time for timestamp calculations
 import time
+# Import queue for thread-safe queue handling
+import queue
 # Import os for file/directory operations
 import os
 
@@ -279,98 +281,118 @@ class LiveVowel(BaseAudioVisualizer):
             if self.recording_start_time is None:
                 self.recording_start_time = time.time()
             
-            # Get the latest audio analysis from the audio processor queue
-            # This blocks briefly if no audio is available (up to 0.1s timeout)
-            self.sound = self.audio_processor.get_sound()
+            # Drain the queue of all available analyzed sounds to keep processing in sync with capture
+            sounds_to_process = []
+            while True:
+                try:
+                    sound = self.audio_processor.analyzed_sounds_queue.get_nowait()
+                    if sound is not None:
+                        sounds_to_process.append(sound)
+                except queue.Empty:
+                    break
+                except AttributeError:
+                    break
             
-            # Calculate precise elapsed time from number of recorded samples
-            # Sample-based timing is more accurate than clock-based timing
-            recorded_count = 0
-            try:
-                # Get total number of samples recorded so far
-                recorded_count = self.audio_processor.get_recording_sample_count()
-            except Exception:
-                # If audio processor not ready, default to 0
-                recorded_count = 0
-            # Calculate analysis window size in samples
-            # Window is chunk_ms * number_of_chunks
-            capture_rate = self.audio_processor.get_recording_sample_rate()
-            window_ms = self.audio_config.get('chunk_ms', 5) * self.audio_config.get('number_of_chunks', 5)
-            window_samples = int(round(
-                capture_rate * (window_ms / 1000)
-            ))
-            # Calculate elapsed recording time, adjusted for window center
-            # Subtract half window to align timestamp with center of analysis window
-            elapsed_time = max(
-                0.0,  # Never negative
-                (recorded_count - (window_samples / 2)) / capture_rate
-            )
-            
-            # Apply smoothing filter to formant values
-            # This checks stability and applies temporal filtering
-            # Sets self.smoother.use to True if frame is stable and should be displayed
-            self.smoother.smooth_formants(self.sound)
+            if sounds_to_process:
+                num_sounds = len(sounds_to_process)
+                device_chunk_size = getattr(self.audio_processor, 'device_chunk_size', 0)
+                
+                for idx, sound in enumerate(sounds_to_process):
+                    self.sound = sound
+                    
+                    # Calculate precise elapsed time from number of recorded samples for this specific chunk
+                    # Sample-based timing is more accurate than clock-based timing
+                    recorded_count = 0
+                    try:
+                        # Get total number of samples recorded so far
+                        recorded_count = self.audio_processor.get_recording_sample_count()
+                    except Exception:
+                        # If audio processor not ready, default to 0
+                        recorded_count = 0
+                    
+                    # Adjust recorded_count for backlog position
+                    backlog_offset = (num_sounds - 1 - idx) * device_chunk_size
+                    current_recorded_count = max(0, recorded_count - backlog_offset)
+                    
+                    # Calculate analysis window size in samples
+                    # Window is chunk_ms * number_of_chunks
+                    capture_rate = self.audio_processor.get_recording_sample_rate()
+                    window_ms = self.audio_config.get('chunk_ms', 5) * self.audio_config.get('number_of_chunks', 5)
+                    window_samples = int(round(
+                        capture_rate * (window_ms / 1000)
+                    ))
+                    # Calculate elapsed recording time, adjusted for window center
+                    # Subtract half window to align timestamp with center of analysis window
+                    elapsed_time = max(
+                        0.0,  # Never negative
+                        (current_recorded_count - (window_samples / 2)) / capture_rate
+                    )
+                    
+                    # Apply smoothing filter to formant values
+                    # This checks stability and applies temporal filtering
+                    # Sets self.smoother.use to True if frame is stable and should be displayed
+                    self.smoother.smooth_formants(self.sound)
 
-            # Check if track just became unstable (ended)
-            # This happens when smoother.use transitions from True to False
-            if self.last_smoother_use and not self.smoother.use:
-                # Track just ended - finish it immediately
-                # Only save tracks with at least 5 points (filters spurious noise bursts)
-                # look into making this a parameter?
-                if len(self.track.sprites()) >= 5:
-                    # Turn all points blue to indicate track is finished
-                    for pt in self.track.sprites():
-                        pt.set_color((0, 100, 255))  # Blue color for finished tracks
-                    # Add current track to finished tracks list
-                    self.finished_tracks.append(self.track)
-                    logger.info(f"Track {self.current_track_number} marked as finished ({len(self.track.sprites())} points)")
-                # Always create new empty track (even if previous was discarded)
-                self.track = pygame.sprite.Group()
-            
-            # Update state for next frame
-            self.last_smoother_use = self.smoother.use
+                    # Check if track just became unstable (ended)
+                    # This happens when smoother.use transitions from True to False
+                    if self.last_smoother_use and not self.smoother.use:
+                        # Track just ended - finish it immediately
+                        # Only save tracks with at least 5 points (filters spurious noise bursts)
+                        # look into making this a parameter?
+                        if len(self.track.sprites()) >= 5:
+                            # Turn all points blue to indicate track is finished
+                            for pt in self.track.sprites():
+                                pt.set_color((0, 100, 255))  # Blue color for finished tracks
+                            # Add current track to finished tracks list
+                            self.finished_tracks.append(self.track)
+                            logger.info(f"Track {self.current_track_number} marked as finished ({len(self.track.sprites())} points)")
+                        # Always create new empty track (even if previous was discarded)
+                        self.track = pygame.sprite.Group()
+                    
+                    # Update state for next frame
+                    self.last_smoother_use = self.smoother.use
 
-            # Only create/log points for stable, smoothed formant values
-            # smoother.use is True when formants pass stability criteria
-            if self.smoother.use:
-                # Append formant data to export log with precise timestamp
-                # This log is exported to CSV on shutdown
-                self.formant_log.append({
-                    'time_ms': int(elapsed_time * 1000),  # Time in milliseconds
-                    'f0': self.sound.f0,  # Raw pitch from Sound object
-                    'f1': self.sound.f1,  # Raw F1 (first formant, unsmoothed)
-                    'f1_smoothed': self.smoother.plot_f1,  # Smoothed F1 (first formant)
-                    'f2': self.sound.f2,  # Raw F2 (second formant, unsmoothed)
-                    'f2_smoothed': self.smoother.plot_f2,  # Smoothed F2 (second formant)
-                    'f3': self.sound.f3,  # Raw F3 (third formant, not smoothed)
-                    'voicing': int(self.sound.voicing),  # 1 if voiced, 0 if unvoiced
-                    'track_number': self.smoother.track_number,  # Track ID for grouping contiguous speech
-                })
-                
-                # Convert formant frequencies (Hz) to screen pixel coordinates
-                # Uses log-scale mapping with IPA-style orientation
-                plot_x, plot_y = self.point_coordinates(
-                    self.gui_info,  # Contains F1/F2 ranges and screen size
-                    self.smoother.plot_f1,  # Smoothed F1 frequency
-                    self.smoother.plot_f2  # Smoothed F2 frequency
-                )
-                # Create a new Point sprite at calculated screen position
-                # Sprite contains the Sound object and visual representation (red circle)
-                self.point = Point(self.sound, plot_x, plot_y)
-                self.point_created_this_frame = True
-                
-                # Check if a new track has started (track number incremented by smoother)
-                # This happens when transitioning from unstable to stable
-                if self.smoother.track_number != self.current_track_number:
-                    # Update our stored track number (track was already finished above when it became unstable)
-                    self.current_track_number = self.smoother.track_number
-                    logger.info(f"New track {self.current_track_number} started")
-                
-                # Add point to current track group (for connected trajectory visualization)
-                self.track.add(self.point)
-                # Add point to all_points group (permanent collection for export)
-                # Track persists until a new stable track begins (when track_number changes)
-                self.all_points.add(self.point)       
+                    # Only create/log points for stable, smoothed formant values
+                    # smoother.use is True when formants pass stability criteria
+                    if self.smoother.use:
+                        # Append formant data to export log with precise timestamp
+                        # This log is exported to CSV on shutdown
+                        self.formant_log.append({
+                            'time_ms': int(elapsed_time * 1000),  # Time in milliseconds
+                            'f0': self.sound.f0,  # Raw pitch from Sound object
+                            'f1': self.sound.f1,  # Raw F1 (first formant, unsmoothed)
+                            'f1_smoothed': self.smoother.plot_f1,  # Smoothed F1 (first formant)
+                            'f2': self.sound.f2,  # Raw F2 (second formant, unsmoothed)
+                            'f2_smoothed': self.smoother.plot_f2,  # Smoothed F2 (second formant)
+                            'f3': self.sound.f3,  # Raw F3 (third formant, not smoothed)
+                            'voicing': int(self.sound.voicing),  # 1 if voiced, 0 if unvoiced
+                            'track_number': self.smoother.track_number,  # Track ID for grouping contiguous speech
+                        })
+                        
+                        # Convert formant frequencies (Hz) to screen pixel coordinates
+                        # Uses log-scale mapping with IPA-style orientation
+                        plot_x, plot_y = self.point_coordinates(
+                            self.gui_info,  # Contains F1/F2 ranges and screen size
+                            self.smoother.plot_f1,  # Smoothed F1 frequency
+                            self.smoother.plot_f2  # Smoothed F2 frequency
+                        )
+                        # Create a new Point sprite at calculated screen position
+                        # Sprite contains the Sound object and visual representation (red circle)
+                        self.point = Point(self.sound, plot_x, plot_y)
+                        self.point_created_this_frame = True
+                        
+                        # Check if a new track has started (track number incremented by smoother)
+                        # This happens when transitioning from unstable to stable
+                        if self.smoother.track_number != self.current_track_number:
+                            # Update our stored track number (track was already finished above when it became unstable)
+                            self.current_track_number = self.smoother.track_number
+                            logger.info(f"New track {self.current_track_number} started")
+                        
+                        # Add point to current track group (for connected trajectory visualization)
+                        self.track.add(self.point)
+                        # Add point to all_points group (permanent collection for export)
+                        # Track persists until a new stable track begins (when track_number changes)
+                        self.all_points.add(self.point)       
 
         # Render points based on track_type parameter
         # This happens in both recording and menu modes so tracks remain visible

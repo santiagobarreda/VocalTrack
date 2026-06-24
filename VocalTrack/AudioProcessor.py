@@ -319,6 +319,9 @@ class AudioProcessor(QThread):
             
             # Main capture loop - runs until self.running is set to False
             while self.running:
+                # Pump the event loop for the current thread so QAudioSource can receive audio data
+                QCoreApplication.processEvents()
+
                 # Is audio available?
                 available = self.stream.bytesAvailable()
                 if available <= 0:
@@ -397,8 +400,8 @@ class AudioProcessor(QThread):
 
                     # Try to add normalized samples to the raw queue for analysis
                     try:
-                        # timeout=0.1 prevents infinite blocking if queue is full
-                        self.raw_samples_queue.put(normalized_samples, timeout=0.1)
+                        # Use put_nowait to avoid blocking the real-time audio capture loop
+                        self.raw_samples_queue.put_nowait(normalized_samples)
                     except queue.Full:
                         # Queue is full - drop this frame and log a warning
                         # This happens if analysis is slower than audio capture
@@ -459,9 +462,8 @@ class AudioProcessor(QThread):
                     # Wait up to 0.1 seconds for samples to be available
                     current_samples = self.raw_samples_queue.get(timeout=0.1)
                 except queue.Empty:
-                    # If no samples available within timeout, use silence (zeros)
-                    logger.debug("No raw samples available (timeout)")
-                    current_samples = np.zeros(self.chunk_size, dtype=np.float32)
+                    # If no samples available within timeout, continue to avoid fabricating silence
+                    continue
                 
                 # Concatenate previous samples with current samples to create overlapping window
                 # This improves temporal resolution and reduces edge effects in analysis
@@ -493,8 +495,8 @@ class AudioProcessor(QThread):
                 
                 # Try to queue the analyzed Sound object for the main thread to consume
                 try:
-                    # timeout=0.1 prevents infinite blocking if queue is full
-                    self.analyzed_sounds_queue.put(sound_object, timeout=0.1)
+                    # Use put_nowait to avoid blocking the analysis thread
+                    self.analyzed_sounds_queue.put_nowait(sound_object)
                 except queue.Full:
                     # Queue is full - drop this analyzed frame
                     # This happens if the GUI is not consuming analyzed sounds fast enough

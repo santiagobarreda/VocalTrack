@@ -1,5 +1,6 @@
 import logging
 import os
+import queue
 import numpy
 import pygame
 
@@ -368,111 +369,133 @@ class LivePitch(BaseAudioVisualizer):
         """
         if self.recording:  # Only process audio when recording
             try:  # Guard against audio errors
-                self.sound = self.audio_processor.get_sound()  # Get next analysis frame
-
-                recorded_count = 0  # Default sample count
-                try:  # Try to read sample count
-                    recorded_count = self.audio_processor.get_recording_sample_count()  # Recorded samples
-                except Exception:  # Fallback if count unavailable
-                    recorded_count = 0  # Use zero samples
-
-                # Calculate window size from chunk_ms and number_of_chunks
-                chunk_ms = self.audio_config.get('chunk_ms', 25)
-                number_of_chunks = self.audio_config.get('number_of_chunks', 2)
-                capture_rate = self.audio_processor.get_recording_sample_rate()
-                window_ms = chunk_ms * number_of_chunks
-                window_samples = int(round(  # Window size in samples
-                    capture_rate * (window_ms / 1000)  # Convert ms to samples
-                ))  # End window sample calc
-                elapsed_time = max(  # Compute elapsed time
-                    0.0,  # Clamp at zero
-                    (recorded_count - (window_samples / 2)) / capture_rate  # Center window time
-                )  # End elapsed time calc
-
-                if not self.started:  # Waiting for sustained voicing
-                    if self.sound.voicing and self.sound.f0 >= self.MIN_f0:  # Voiced and in range
-                        self.voicing_run += 1  # Increment voiced counter
-                    else:  # Not voiced or out of range
-                        self.voicing_run = 0  # Reset voiced counter
-                    if self.voicing_run >= 3:  # Require 3 consecutive voiced frames
-                        self.started = True  # Allow plotting
-                        self.track_start_time = elapsed_time  # Record track start time
-
-                if self.started:  # After voicing onset
-                    # Check if fixed mode has exceeded max duration
-                    should_process = True  # Flag to process this frame
-                    if self.pitch_plot_mode == 'fixed':  # Fixed time mode
-                        track_elapsed = elapsed_time - self.track_start_time  # Time since track start
-                        if track_elapsed >= self.pitch_display_seconds:  # Exceeded max duration
-                            # Force end of track and STOP RECORDING
-                            if len(self.track_points.sprites()) >= 2:  # Save meaningful tracks
-                                for pt in self.track_points.sprites():  # Iterate track points
-                                    pt.set_color((0, 100, 255))  # Mark finished track
-                                self.finished_tracks.append(self.track_points)  # Save track
-                            self.track_points = pygame.sprite.Group()  # Reset active track
-                            self.started = False  # Reset started flag
-                            self.voicing_run = 0  # Reset voiced counter
-                            self.unvoiced_run = 0  # Reset unvoiced counter
-                            self.smoother.f0_history = numpy.full(self.smoother.memory_n, 1)  # Reset smoother history buffer
-                            self.smoother._pitch_euro_prev_time = None  # Reset 1-Euro filter time tracker
-                            self.smoother._pitch_euro_x_prev = 1.0  # Reset 1-Euro filter position
-                            self.smoother._pitch_euro_dx_prev = 0.0  # Reset 1-Euro filter velocity
-                            self.smoother.pitch_skipped = 0  # Reset skip counter
-                            self.smoother.valid_pitch_frames = 0  # Reset warm-up frame counter
-                            self.smoother.plot_f0 = 1.0  # Reset plot frequency
-                            self.smoother.last_valid_f0 = 1.0  # Reset last valid frequency
-                            self.smoother.pitch_use = False  # Reset smoother gate
-                            # Stop recording and require spacebar release before restart
-                            self.stop_recording()  # Stop audio processor
-                            self.space_released_since_recording_stop = False  # Require spacebar release
-                            should_process = False  # Skip further processing for this frame
+                sounds_to_process = []
+                while True:
+                    try:
+                        sound = self.audio_processor.analyzed_sounds_queue.get_nowait()
+                        if sound is not None:
+                            sounds_to_process.append(sound)
+                    except queue.Empty:
+                        break
+                    except AttributeError:
+                        break
+                
+                if sounds_to_process:
+                    num_sounds = len(sounds_to_process)
+                    device_chunk_size = getattr(self.audio_processor, 'device_chunk_size', 0)
+                    latest_elapsed_time = 0.0
                     
-                    # Process audio only if track not ended
-                    if should_process:  # Continue processing
-                        if self.sound.voicing and self.sound.f0 >= self.MIN_f0:  # Still voiced
-                            self.unvoiced_run = 0  # Reset unvoiced counter
-                            self.smoother.smooth_pitch(self.sound, min_f0=self.MIN_f0, max_f0=self.MAX_f0)  # Smooth f0
+                    for idx, sound in enumerate(sounds_to_process):
+                        self.sound = sound
+                        
+                        recorded_count = 0  # Default sample count
+                        try:  # Try to read sample count
+                            recorded_count = self.audio_processor.get_recording_sample_count()  # Recorded samples
+                        except Exception:  # Fallback if count unavailable
+                            recorded_count = 0  # Use zero samples
 
-                            if self.smoother.pitch_use:  # Only plot stable points
-                                self.pitch_log.append({  # Add row to pitch log
-                                    'time_ms': int(elapsed_time * 1000),  # Timestamp in ms
-                                    'f0': self.sound.f0,  # Raw f0 from Sound object
-                                    'f0_smoothed': self.smoother.plot_f0,  # Smoothed f0
-                                    'voicing': int(self.sound.voicing),  # Voicing flag
-                                })  # End log row
+                        # Adjust recorded_count for backlog position
+                        backlog_offset = (num_sounds - 1 - idx) * device_chunk_size
+                        current_recorded_count = max(0, recorded_count - backlog_offset)
 
-                                self.point = Point(self.sound, 0, 0, radius=8)  # Create new point
-                                self.point.f0 = self.smoother.plot_f0  # Store f0 on point
-                                self.point.t_sec = elapsed_time  # Store time on point
-                                self.all_points.add(self.point)  # Add to all points
-                                self.track_points.add(self.point)  # Add to active track
-                        else:  # Unvoiced or out of range
-                            self.unvoiced_run += 1  # Increment unvoiced counter
-                            if self.unvoiced_run >= 3:  # Require 3 consecutive unvoiced frames
-                                if len(self.track_points.sprites()) >= 2:  # Save meaningful tracks
-                                    for pt in self.track_points.sprites():  # Iterate track points
-                                        pt.set_color((0, 100, 255))  # Mark finished track
-                                    self.finished_tracks.append(self.track_points)  # Save track
-                                self.track_points = pygame.sprite.Group()  # Reset active track
-                                self.started = False  # Reset started flag
+                        # Calculate window size from chunk_ms and number_of_chunks
+                        chunk_ms = self.audio_config.get('chunk_ms', 25)
+                        number_of_chunks = self.audio_config.get('number_of_chunks', 2)
+                        capture_rate = self.audio_processor.get_recording_sample_rate()
+                        window_ms = chunk_ms * number_of_chunks
+                        window_samples = int(round(  # Window size in samples
+                            capture_rate * (window_ms / 1000)  # Convert ms to samples
+                        ))  # End window sample calc
+                        elapsed_time = max(  # Compute elapsed time
+                            0.0,  # Clamp at zero
+                            (current_recorded_count - (window_samples / 2)) / capture_rate  # Center window time
+                        )  # End elapsed time calc
+                        
+                        latest_elapsed_time = elapsed_time
+
+                        if not self.started:  # Waiting for sustained voicing
+                            if self.sound.voicing and self.sound.f0 >= self.MIN_f0:  # Voiced and in range
+                                self.voicing_run += 1  # Increment voiced counter
+                            else:  # Not voiced or out of range
                                 self.voicing_run = 0  # Reset voiced counter
-                                self.unvoiced_run = 0  # Reset unvoiced counter
-                                self.smoother.f0_history = numpy.full(self.smoother.memory_n, 1)  # Reset smoother history buffer
-                                self.smoother._pitch_euro_prev_time = None  # Reset 1-Euro filter time tracker
-                                self.smoother._pitch_euro_x_prev = 1.0  # Reset 1-Euro filter position
-                                self.smoother._pitch_euro_dx_prev = 0.0  # Reset 1-Euro filter velocity
-                                self.smoother.pitch_skipped = 0  # Reset skip counter
-                                self.smoother.valid_pitch_frames = 0  # Reset warm-up frame counter
-                                self.smoother.plot_f0 = 1.0  # Reset plot frequency
-                                self.smoother.last_valid_f0 = 1.0  # Reset last valid frequency
-                                self.smoother.pitch_use = False  # Reset smoother gate
+                            if self.voicing_run >= 3:  # Require 3 consecutive voiced frames
+                                self.started = True  # Allow plotting
+                                self.track_start_time = elapsed_time  # Record track start time
 
-                    self.update_pitch_points(elapsed_time)  # Update point positions
+                        if self.started:  # After voicing onset
+                            # Check if fixed mode has exceeded max duration
+                            should_process = True  # Flag to process this frame
+                            if self.pitch_plot_mode == 'fixed':  # Fixed time mode
+                                track_elapsed = elapsed_time - self.track_start_time  # Time since track start
+                                if track_elapsed >= self.pitch_display_seconds:  # Exceeded max duration
+                                    # Force end of track and STOP RECORDING
+                                    if len(self.track_points.sprites()) >= 2:  # Save meaningful tracks
+                                        for pt in self.track_points.sprites():  # Iterate track points
+                                            pt.set_color((0, 100, 255))  # Mark finished track
+                                        self.finished_tracks.append(self.track_points)  # Save track
+                                    self.track_points = pygame.sprite.Group()  # Reset active track
+                                    self.started = False  # Reset started flag
+                                    self.voicing_run = 0  # Reset voiced counter
+                                    self.unvoiced_run = 0  # Reset unvoiced counter
+                                    self.smoother.f0_history = numpy.full(self.smoother.memory_n, 1)  # Reset smoother history buffer
+                                    self.smoother._pitch_euro_prev_time = None  # Reset 1-Euro filter time tracker
+                                    self.smoother._pitch_euro_x_prev = 1.0  # Reset 1-Euro filter position
+                                    self.smoother._pitch_euro_dx_prev = 0.0  # Reset 1-Euro filter velocity
+                                    self.smoother.pitch_skipped = 0  # Reset skip counter
+                                    self.smoother.valid_pitch_frames = 0  # Reset warm-up frame counter
+                                    self.smoother.plot_f0 = 1.0  # Reset plot frequency
+                                    self.smoother.last_valid_f0 = 1.0  # Reset last valid frequency
+                                    self.smoother.pitch_use = False  # Reset smoother gate
+                                    # Stop recording and require spacebar release before restart
+                                    self.stop_recording()  # Stop audio processor
+                                    self.space_released_since_recording_stop = False  # Require spacebar release
+                                    should_process = False  # Skip further processing for this frame
+                            
+                            # Process audio only if track not ended
+                            if should_process:  # Continue processing
+                                if self.sound.voicing and self.sound.f0 >= self.MIN_f0:  # Still voiced
+                                    self.unvoiced_run = 0  # Reset unvoiced counter
+                                    self.smoother.smooth_pitch(self.sound, min_f0=self.MIN_f0, max_f0=self.MAX_f0)  # Smooth f0
+
+                                    if self.smoother.pitch_use:  # Only plot stable points
+                                        self.pitch_log.append({  # Add row to pitch log
+                                            'time_ms': int(elapsed_time * 1000),  # Timestamp in ms
+                                            'f0': self.sound.f0,  # Raw f0 from Sound object
+                                            'f0_smoothed': self.smoother.plot_f0,  # Smoothed f0
+                                            'voicing': int(self.sound.voicing),  # Voicing flag
+                                        })  # End log row
+
+                                        self.point = Point(self.sound, 0, 0, radius=8)  # Create new point
+                                        self.point.f0 = self.smoother.plot_f0  # Store f0 on point
+                                        self.point.t_sec = elapsed_time  # Store time on point
+                                        self.all_points.add(self.point)  # Add to all points
+                                        self.track_points.add(self.point)  # Add to active track
+                                else:  # Unvoiced or out of range
+                                    self.unvoiced_run += 1  # Increment unvoiced counter
+                                    if self.unvoiced_run >= 3:  # Require 3 consecutive unvoiced frames
+                                        if len(self.track_points.sprites()) >= 2:  # Save meaningful tracks
+                                            for pt in self.track_points.sprites():  # Iterate track points
+                                                pt.set_color((0, 100, 255))  # Mark finished track
+                                            self.finished_tracks.append(self.track_points)  # Save track
+                                        self.track_points = pygame.sprite.Group()  # Reset active track
+                                        self.started = False  # Reset started flag
+                                        self.voicing_run = 0  # Reset voiced counter
+                                        self.unvoiced_run = 0  # Reset unvoiced counter
+                                        self.smoother.f0_history = numpy.full(self.smoother.memory_n, 1)  # Reset smoother history buffer
+                                        self.smoother._pitch_euro_prev_time = None  # Reset 1-Euro filter time tracker
+                                        self.smoother._pitch_euro_x_prev = 1.0  # Reset 1-Euro filter position
+                                        self.smoother._pitch_euro_dx_prev = 0.0  # Reset 1-Euro filter velocity
+                                        self.smoother.pitch_skipped = 0  # Reset skip counter
+                                        self.smoother.valid_pitch_frames = 0  # Reset warm-up frame counter
+                                        self.smoother.plot_f0 = 1.0  # Reset plot frequency
+                                        self.smoother.last_valid_f0 = 1.0  # Reset last valid frequency
+                                        self.smoother.pitch_use = False  # Reset smoother gate
+
+                    if latest_elapsed_time > 0.0 or num_sounds > 0:
+                        self.update_pitch_points(latest_elapsed_time)  # Update point positions
             except Exception as e:  # Handle errors during recording
                 logger.error(f"Error during recording: {e}")  # Log error
-                self.stop_recording()  # Stop recording on error
-
-        # In fixed mode, draw all finished tracks (they stay at valid positions).
+        
         # In continuous mode, finished tracks have stale pixel positions that
         # don't scroll with the window, so skip drawing them.
         if self.pitch_plot_mode == 'fixed':
