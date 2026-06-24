@@ -268,25 +268,18 @@ class AudioProcessor(QThread):
                 if input_device is None or input_device.isNull():
                     input_device = inputs[0]
 
-            # Request mono Int16 format at analysis sample rate
-            audio_format = QAudioFormat()
-            audio_format.setSampleRate(self.analysis_sample_rate)
-            audio_format.setChannelCount(1)
-            audio_format.setSampleFormat(QAudioFormat.SampleFormat.Int16)
+            # Save requested analysis rate before any device override
+            original_sample_rate = self.analysis_sample_rate
+            
+            # Always open the hardware in its preferred/native format (typically 44.1kHz or 48kHz)
+            # This ensures high-fidelity exports and avoids buggy OS/driver-level resampling conversions.
+            audio_format = input_device.preferredFormat()
 
-            # Instead of an error, Qt may return a similar supported format if the requested one is not available. 
-            # We check this and update our sample rate and chunk size accordingly to keep timing in sync.
-            # I'm going to need to add an eror pop up or something about this to notify the user
-            original_sample_rate = self.analysis_sample_rate  # Save requested analysis rate before any device override
-            if not input_device.isFormatSupported(audio_format):
-                audio_format = input_device.preferredFormat()
-
-                # If the sample rate is different from what we requested, keep the analysis rate
-                # unchanged and only adapt the device capture chunking. We will resample in software.
-                if audio_format.sampleRate() > 0:
-                    self.device_sample_rate = audio_format.sampleRate()
-                    self.device_chunk_size = max(round(self.chunk_ms * self.device_sample_rate / 1000), 1)
-                    logger.info(f"Device rate {self.device_sample_rate} differs from requested analysis rate {original_sample_rate}; using software resampling")
+            # Keep the analysis rate unchanged and adapt the device capture chunking + resample in software.
+            if audio_format.sampleRate() > 0:
+                self.device_sample_rate = audio_format.sampleRate()
+                self.device_chunk_size = max(round(self.chunk_ms * self.device_sample_rate / 1000), 1)
+                logger.info(f"Device rate {self.device_sample_rate} differs from requested analysis rate {original_sample_rate}; using software resampling")
             else:
                 self.device_sample_rate = self.analysis_sample_rate
                 self.device_chunk_size = self.chunk_size
