@@ -10,7 +10,7 @@ import numpy as np
 import statistics
 import logging
 import csv
-from scipy.io import wavfile
+import wave
 from datetime import datetime
 
 try:
@@ -180,8 +180,14 @@ def run_comprehensive_benchmark(base_method="native", output_dir=None, duration_
     # Save the recorded audio for verification
     if recording is not None:
         timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        audio_filename = f"benchmark_{timestamp}.wav"
-        wavfile.write(os.path.join(out, audio_filename), sample_rate, recording)
+        audio_filename = f"benchmark_{timestamp}.wav"        
+        
+        with wave.open(os.path.join(out, audio_filename), 'wb') as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(recording.tobytes())
+
         if status_callback: status_callback(f"Saved audio: {audio_filename}")
     
     if f_raw:
