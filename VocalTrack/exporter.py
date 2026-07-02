@@ -81,7 +81,6 @@ def save_formants_csv(filename, formant_data):
         writer = csv.DictWriter(f, fieldnames=['time_ms', 'f0', 'f1', 'f1_smoothed', 'f2', 'f2_smoothed', 'f3', 'voicing', 'track_number'])
         # Write CSV header row with column names
         writer.writeheader()
-        # Loop through each formant measurement dictionary
         for row in formant_data:
             # Extract f0 value from row dictionary (fixed: was 'f0_hz', should be 'f0')
             f0 = row.get('f0')
@@ -89,8 +88,13 @@ def save_formants_csv(filename, formant_data):
             voicing = row.get('voicing')
             # Only write voiced frames with valid f0 in acceptable range
             if voicing and f0 is not None and min_f0 <= f0 <= max_f0:
+                row_out = row.copy()
+                if 'f1_smoothed' in row_out and row_out['f1_smoothed'] is not None:
+                    row_out['f1_smoothed'] = int(round(row_out['f1_smoothed']))
+                if 'f2_smoothed' in row_out and row_out['f2_smoothed'] is not None:
+                    row_out['f2_smoothed'] = int(round(row_out['f2_smoothed']))
                 # Write row dictionary as CSV line
-                writer.writerow(row)
+                writer.writerow(row_out)
 
 
 def save_pitch_csv(filename, pitch_data, min_f0=None, max_f0=None):
