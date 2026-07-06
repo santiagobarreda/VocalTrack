@@ -108,16 +108,16 @@ class BaseAudioVisualizer:
         Returns:
             bool: False if the user asked to quit, True if the program should keep going.
         """
-        # If the user presses the 'G' key...
-        if event_holder.g_key:
+        # If the user presses Ctrl+G...
+        if event_holder.ctrl_g:
             # Flip the grid switch (turn it on if it's off, or off if it's on)
             self.show_grid = not self.show_grid
             # Log the change
             grid_status = "ON" if self.show_grid else "OFF"
             logger.debug(f"Grid toggled {grid_status}")
         
-        # If the user presses the 'H' key...
-        if event_holder.h_key:
+        # If the user presses Ctrl+H...
+        if event_holder.ctrl_h:
             # Flip the help menu switch
             self.show_help = not self.show_help
             # Log the change

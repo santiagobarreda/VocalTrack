@@ -65,7 +65,7 @@ A Pygame window opens showing the visualization.
 All modes support real-time parameter adjustment:
 
 - **Minimum RMS threshold** (`+`/`-`): Filter out background noise
-- **Grid visibility** (`G`): Toggle reference grid overlay
+- **Grid visibility** (`Ctrl+G`): Toggle reference grid overlay
 - **Help overlay** (`H` or `Ctrl+H`): Show keyboard shortcuts
 
 Mode-specific adjustments:
@@ -170,8 +170,8 @@ Navigate to the `recordings/` folder to find:
 
 **Key controls:**
 - `+`/`-`: Adjust gain offset (dB)
-- `G`: Toggle grid overlay
-- `H`: Toggle help overlay
+- `Ctrl+G`: Toggle grid overlay
+- `Ctrl+H`: Toggle help overlay
 
 ## Common Keyboard Controls
 
@@ -180,7 +180,7 @@ These controls work across all four modes:
 | Key | Action |
 |-----|--------|
 | `Esc` | Quit mode and save (if applicable) |
-| `G` | Toggle grid overlay |
+| `Ctrl+G` | Toggle grid overlay |
 | `H` or `Ctrl+H` | Toggle help overlay with keyboard shortcuts |
 | `+` or `=` | Increase threshold/gain/dynamic range (mode-dependent) |
 | `-` or `_` | Decrease threshold/gain/dynamic range (mode-dependent) |
@@ -222,8 +222,8 @@ These controls work across all four modes:
 | Key | Action |
 |-----|--------|
 | `+`/`-` | Adjust gain offset (dB) |
-| `G` | Toggle grid overlay |
-| `H` | Toggle help overlay |
+| `Ctrl+G` | Toggle grid overlay |
+| `Ctrl+H` | Toggle help overlay |
 
 ## Recording and Export Behavior
 

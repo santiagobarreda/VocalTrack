@@ -438,20 +438,18 @@ class LiveVowel(BaseAudioVisualizer):
         # Handle base events (quit, grid/help toggle, RMS adjustment, backspace/delete)
         self.handle_base_events(self.event_holder)
         
-        # Also support Ctrl+H for help overlay (consistent with LiveSpectrogram)
+        # Handle Ctrl+H recording pause/resume (help overlay toggle is handled by base class)
         if self.event_holder.ctrl_h:
-            self.show_help = not self.show_help
+            # show_help has already been toggled by handle_base_events()
             if self.show_help:
                 if self.recording_active:
                     self._stop_recording_session()
             else:
                 if not self.recording_active:
                     self._start_recording_session()
-            help_status = "shown" if self.show_help else "hidden"
-            logger.debug(f"Help overlay {help_status}")
 
-        # Check if user pressed L to toggle log/linear frequency scale
-        if self.event_holder.l_key:
+        # Check if user pressed Ctrl+L to toggle log/linear frequency scale
+        if self.event_holder.ctrl_l:
             self.freq_scale = 'linear' if self.freq_scale == 'log' else 'log'
             self.gui_info['freq_scale'] = self.freq_scale
             scale_status = "logarithmic" if self.freq_scale == 'log' else "linear"
@@ -829,18 +827,18 @@ class LiveVowel(BaseAudioVisualizer):
         help_text = [
             "=== LiveVowel Controls ===",
             "",
-            "CTRL/CMD+R - Start / stop recording",
-            "CTRL/CMD+V - Show / hide IPA vowel picker",
+            "Ctrl/Cmd+R - Start / stop recording",
+            "Ctrl/Cmd+V - Show / hide IPA vowel picker",
             "             (opening picker stops recording)",
-            "CTRL/CMD+T - Toggle template vowels on/off",
-            "CTRL+S - Save current template labels/positions",
+            "Ctrl/Cmd+T - Toggle template vowels on/off",
+            "Ctrl/Cmd+S - Save current template labels/positions",
             "+/-    - Adjust minimum RMS threshold",
             "Backspace - Undo last track",
             "Delete - Clear all tracks",
-            "G      - Toggle grid",
-            "L      - Toggle log/linear frequency scale",
+            "Ctrl/Cmd+G - Toggle grid",
+            "Ctrl/Cmd+L - Toggle log/linear frequency scale",
             "Scroll - Scale IPA labels (in vowel picker mode)",
-            "H or Ctrl/Cmd+H - Toggle this help overlay",
+            "Ctrl/Cmd+H - Toggle this help overlay",
         ]
         
         # Draw title
@@ -858,7 +856,7 @@ class LiveVowel(BaseAudioVisualizer):
             y_pos += 40
         
         # Footer text
-        footer = font_normal.render("Press 'H' to close help", True, (200, 200, 200))
+        footer = font_normal.render("Press Ctrl+H to close help", True, (200, 200, 200))
         footer_rect = footer.get_rect(center=(self.gui_info['gui_size'][0] // 2, self.gui_info['gui_size'][1] - 30))
         self.screen.blit(footer, footer_rect)
 

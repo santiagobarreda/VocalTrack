@@ -87,8 +87,8 @@ Click one of the four launch buttons:
 
 **Common (all modes where implemented):**
 - `ESC`: Quit and save (if applicable)
-- `G`: Toggle grid overlay
-- `H`: Toggle help overlay
+- `Ctrl+G`: Toggle grid overlay
+- `Ctrl+H`: Toggle help overlay
 - `+`/`-`: Adjust threshold/gain/dynamic range
 
 **Note for macOS users:** all `Ctrl+...` shortcuts also support `Cmd+...`.
@@ -99,7 +99,7 @@ Click one of the four launch buttons:
 - `Ctrl+H`: Toggle help overlay (stops recording when shown, starts when hidden)
 - `Ctrl+T`: Toggle vowel template display
 - `Ctrl+S`: Save currently toggled template labels + frequency positions
-- `L`: Toggle log/linear frequency scale
+- `Ctrl+L`: Toggle log/linear frequency scale
 - `Backspace`: Undo last track (in track mode)
 - `Delete`: Clear all tracks (in track mode)
 

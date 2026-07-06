@@ -269,7 +269,7 @@ pip install praat-parselmouth
    - Male voices may need narrower ranges (F1: 200-1000, F2: 500-2300)
 
 3. **Toggle frequency scale**:
-   - Press `L` key to switch between log and linear scale
+   - Press `Ctrl+L` to switch between log and linear scale
    - Logarithmic scale may provide better spread
 
 4. **Examine CSV output** to see actual formant values:

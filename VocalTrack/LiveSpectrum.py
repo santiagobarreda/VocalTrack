@@ -397,8 +397,8 @@ class LiveSpectrum(BaseAudioVisualizer):
         """
         help_text = [
             "KEYBOARD SHORTCUTS:",
-            "G: Toggle Grid",
-            "H: Toggle Help",
+            "Ctrl/Cmd+G: Toggle Grid",
+            "Ctrl/Cmd+H: Toggle Help",
             "+/-: Adjust Gain",
             "ESC: Quit"
         ]
