@@ -435,6 +435,12 @@ class LiveVowel(BaseAudioVisualizer):
         # Also support Ctrl+H for help overlay (consistent with LiveSpectrogram)
         if self.event_holder.ctrl_h:
             self.show_help = not self.show_help
+            if self.show_help:
+                if self.recording_active:
+                    self._stop_recording_session()
+            else:
+                if not self.recording_active:
+                    self._start_recording_session()
             help_status = "shown" if self.show_help else "hidden"
             logger.debug(f"Help overlay {help_status}")
 
