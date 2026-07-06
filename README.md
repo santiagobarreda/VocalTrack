@@ -52,7 +52,9 @@ Or download from GitHub and unzip into local directory.
 # macOS/Linux: python3 -m venv vocaltrack-env && source vocaltrack-env/bin/activate
 
 # (Note: If you skip creating a virtual environment on macOS/Linux, you will likely need to use pip3 instead of pip below)
-pip install --upgrade pip setuptools wheel
+
+# Upgrade core packaging tools (python -m pip is required on Windows to prevent file-locking crashes)
+python -m pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 ```
 

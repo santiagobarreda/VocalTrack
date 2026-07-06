@@ -42,9 +42,9 @@ We highly recommend installing VocalTrack's dependencies into a **Python Virtual
 
 **3. Install the dependencies:**
 
-*(Because the virtual environment is active, you can simply use `pip` on all operating systems).*
+*(Because the virtual environment is active, you can use `pip` or `python -m pip` on all operating systems. Using `python -m pip` is required on Windows to prevent file-locking crashes).*
 ```bash
-pip install --upgrade pip setuptools wheel
+python -m pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 ```
 
@@ -54,14 +54,14 @@ If you prefer to install the packages globally into your main Python installatio
 
 - **Windows:**
   ```cmd
-  pip install --upgrade pip setuptools wheel
+  python -m pip install --upgrade pip setuptools wheel
   pip install -r requirements.txt
   ```
 
 - **macOS / Linux:**
-  *(Note: You usually need to use `pip3` instead of `pip` outside a virtual environment. You may also need to append the `--user` flag if you encounter permission errors).*
+  *(Note: You usually need to use `pip3` or `python3 -m pip` instead of `pip` outside a virtual environment. You may also need to append the `--user` flag if you encounter permission errors).*
   ```bash
-  pip3 install --upgrade pip setuptools wheel
+  python3 -m pip install --upgrade pip setuptools wheel
   pip3 install -r requirements.txt
   ```
 
