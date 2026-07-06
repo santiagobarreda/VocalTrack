@@ -34,6 +34,7 @@ Accessed via "Analysis Settings" button in launcher. Controls core acoustic anal
 | `min_rms_db` | `-60.0` | -90 to -20 dB | Minimum RMS amplitude threshold in dBFS for analysis gating. More negative = capture quieter sounds. Less negative = filter out more noise. Adjustable during recording with `+`/`-` keys. |
 | `formant_method` | `'native'` | `'native'`, `'parselmouth'`, `'custom'` | Formant extraction backend. `native` = built-in LPC, `parselmouth` = Praat-based, `custom` = user-defined. |
 | `pitch_method` | `'native'` | `'native'`, `'parselmouth'`, `'custom'` | Pitch extraction backend. `native` = built-in autocorrelation, `parselmouth` = Praat-based. |
+| `robust_formants` | `False` | True/False | (Formerly `robust`) Enable robust formant extraction logic. |
 | `window_length` | *Derived* | — | Analysis window duration in seconds. Auto-calculated: `window_length = (chunk_ms × number_of_chunks) / 1000`. Example: 20 ms × 3 = 0.06 s. |
 | `time_step` | *Derived* | — | Time between analysis frames in seconds. Auto-calculated: `time_step = chunk_ms / 1000`. Example: 20 ms = 0.02 s. |
 | `pre_emphasis_coeff` | `0.97` | 0.0-1.0 | Pre-emphasis filter coefficient for high-frequency boosting. Higher = more emphasis. Standard for speech: 0.97. |
@@ -92,6 +93,7 @@ Accessed via "Smoother Settings" button in launcher. Controls the 1-Euro filter 
 | `stability_threshold` | `0.15` | 0.05-0.50 | Normalized stability threshold for accepting trajectories. Lower = accept more erratic tracks, higher = stricter gating. |
 | `skip_tolerance` | `2` | 0-10 frames | Number of unstable frames tolerated before resetting trajectory. Higher = more forgiving of brief instabilities. |
 | `hold_unvoiced` | `True` | True/False | Whether to maintain trajectory during brief unvoiced segments. True = preserve tracks across voicing drops (recommended). |
+| `use_euro_filter` | `True` | True/False | Enable 1-Euro temporal smoothing of formants and pitch. |
 | `euro_min_cutoff` | `0.05` | 0.001-1.0 Hz | 1-Euro filter baseline cutoff frequency. Lower = smoother but slower to respond. Typical: 0.01-0.1 Hz. |
 | `euro_beta` | `1.5` | 0.0-5.0 | 1-Euro filter responsiveness to velocity. Higher = more adaptive to fast changes. Typical: 1.0-2.0. |
 | `euro_dcutoff` | `0.5` | 0.1-2.0 Hz | 1-Euro filter cutoff for derivative (velocity) smoothing. Lower = smoother velocity estimates. |
@@ -210,8 +212,8 @@ Accessed via "Spectrogram Settings" button in launcher. Controls LiveSpectrogram
 | `colormap` | `'plasma'` | Any matplotlib colormap | Color mapping for magnitude visualization. `plasma`, `viridis`, `magma` recommended (perceptually uniform). |
 | `dynamic_range` | `40` | 20-80 dB | Dynamic range in dB for amplitude display. Smaller = more detail, larger = more contrast. Adjustable with `+`/`-` during use. |
 | `fps` | `60` | 15-120 | Frame rate for display refresh. Higher = smoother scrolling, more CPU. |
-| `chunk_ms` | `15.0` | 5-50 ms | Duration of each audio chunk for spectral analysis. Smaller = better time resolution, larger = better frequency resolution. |
-| `number_of_chunks` | `3` | 1-10 | Number of chunks combined into analysis window. Total window = chunk_ms × number_of_chunks (e.g., 15 ms × 3 = 45 ms). |
+| `chunk_ms` | `6.0` (UI default `15.0`) | 5-50 ms | Duration of each audio chunk for spectral analysis. Smaller = better time resolution, larger = better frequency resolution. |
+| `number_of_chunks` | `1` (UI default `3`) | 1-10 | Number of chunks combined into analysis window. Total window = chunk_ms × number_of_chunks. |
 | `padding_length_ms` | `20.0` | 0-100 ms | Zero-padding duration in milliseconds for FFT. Increases frequency resolution without changing time resolution. Larger = smoother frequency axis, more computation. |
 
 **Key parameters:**
@@ -290,6 +292,9 @@ Accessed via "Recording Settings" button in launcher. Selects audio input device
 | Parameter | Default | Range | Description |
 |-----------|---------|-------|-------------|
 | `input_device_index` | System default | 0 to device_count-1 | QtMultimedia device index for microphone/audio input. `None` = system default. |
+| `save_recordings` | `False` | True/False | Enable/disable saving any recordings (WAV/CSV). Must be True to save output. |
+| `save_original_audio` | `True` | True/False | Save the device-rate/original audio stream as WAV (if `save_recordings` is True). |
+| `save_downsampled_audio` | `False` | True/False | Save the analysis-rate/downsampled audio stream as WAV (if `save_recordings` is True). |
 
 **Device selection:**
 
@@ -322,8 +327,11 @@ These settings are defined in `config.EXPORT_CONFIG` but not exposed in launcher
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `save_wav` | `True` | Enable WAV file export for LiveVowel/LivePitch. |
-| `save_csv` | `True` | Enable CSV file export for LiveVowel/LivePitch. |
+| `save_recordings` | `False` | Enable/disable saving any recordings (WAV and CSV) for LiveVowel/LivePitch. |
+| `save_wav` | `True` | Enable WAV file export (when `save_recordings` is True). |
+| `save_original_audio` | `True` | Save the device-rate/original audio stream as WAV. |
+| `save_downsampled_audio`| `False` | Save the analysis-rate/downsampled audio stream as WAV. |
+| `save_csv` | `True` | Enable CSV file export (when `save_recordings` is True). |
 | `output_dir` | `'recordings'` | Output directory for session files (relative to project root). |
 
 **To modify:**
@@ -332,9 +340,12 @@ Edit `VocalTrack/config.py`:
 
 ```python
 EXPORT_CONFIG = {
-    'save_wav': True,  # Set to False to disable WAV export
-    'save_csv': True,  # Set to False to disable CSV export
-    'output_dir': 'my_recordings',  # Change output folder
+    'save_recordings': False,  # Enable/disable saving recordings (off by default)
+    'save_wav': True,  # Save audio as WAV (when save_recordings is True)
+    'save_original_audio': True,  # Save the device-rate/original audio stream as WAV
+    'save_downsampled_audio': False,  # Save the analysis-rate/downsampled audio stream as WAV
+    'save_csv': True,  # Save timestamped CSV with formants (when save_recordings is True)
+    'output_dir': 'recordings',  # Output directory for files
 }
 ```
 

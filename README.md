@@ -89,7 +89,9 @@ Click one of the four launch buttons:
 **Note for macOS users:** all `Ctrl+...` shortcuts also support `Cmd+...`.
 
 **LiveVowel:**
-- `Ctrl+V`: Toggle recording state
+- `Ctrl+V`: Toggle IPA vowel picker
+- `Ctrl+R`: Toggle recording state
+- `Ctrl+H`: Toggle help overlay (stops recording when shown, starts when hidden)
 - `Ctrl+T`: Toggle vowel template display
 - `Ctrl+S`: Save currently toggled template labels + frequency positions
 - `L`: Toggle log/linear frequency scale

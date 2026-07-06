@@ -55,7 +55,9 @@ Three visualization modes are available (configure in Formant Plot Settings):
 
 | Key | Action |
 |-----|--------|
-| `Ctrl+V` | Toggle between IPA menu state and recording state |
+| `Ctrl+V` | Toggle IPA chooser menu |
+| `Ctrl+R` | Toggle recording state |
+| `Ctrl+H` | Toggle help overlay (stops recording when shown, starts when hidden) |
 | `Ctrl+T` | Toggle vowel template overlay (IPA symbols) |
 | `G` | Toggle grid overlay |
 | `H` | Toggle help overlay |
@@ -551,7 +553,7 @@ The display shows:
 | Feature | LiveVowel | LivePitch | LiveSpectrogram | LiveSpectrum |
 |---------|-----------|-----------|-----------------|--------------|
 | **Primary display** | F1/F2 scatter plot | f0 contour line | Scrolling spectrogram | Static spectrum line |
-| **Recording control** | Ctrl+V (toggle) | Space (push-to-talk) | None (always on) | None (always on) |
+| **Recording control** | Ctrl+R or Ctrl+H (toggle) | Space (push-to-talk) | None (always on) | None (always on) |
 | **Exports WAV** | Yes | Yes | No (by default) | No (by default) |
 | **Exports CSV** | Yes (formants) | Yes (pitch) | No (by default) | No (by default) |
 | **Best for** | Vowel analysis | Intonation training | Phonetic transcription | Spectral analysis |

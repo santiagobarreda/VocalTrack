@@ -41,7 +41,7 @@ A Pygame window opens showing the visualization.
 ### 4. Record and Visualize
 
 **LiveVowel:**
-- Press `Ctrl+V` to toggle recording state
+- Press `Ctrl+R` to toggle recording state, or `Ctrl+H` to hide help and start recording
 - Speak naturally to see your vowel formants plotted in F1/F2 space
 - Visual feedback shows current formant position and trajectory tracks
 
@@ -75,7 +75,7 @@ Mode-specific adjustments:
 ### 6. Save and Exit
 
 **LiveVowel and LivePitch:**
-- Press `Esc` to quit and automatically export WAV + CSV files
+- Press `Esc` to quit and automatically export WAV + CSV files (if enabled in Recording Settings)
 - Files are saved to `recordings/` directory with timestamp
 - Format: `speaker_YYYY-MM-DD_HHMMSS.wav` and `speaker_YYYY-MM-DD_HHMMSS_formants.csv` (or `_pitch.csv`)
 
@@ -191,7 +191,9 @@ These controls work across all four modes:
 
 | Key | Action |
 |-----|--------|
-| `Ctrl+V` | Toggle IPA chooser menu (menu ↔ recording) |
+| `Ctrl+V` | Toggle IPA chooser menu |
+| `Ctrl+R` | Toggle recording state |
+| `Ctrl+H` | Toggle help overlay (stops recording when shown, starts when hidden) |
 | `Ctrl+T` | Toggle vowel template overlay (IPA symbols) |
 | `Backspace` | Undo last finished track |
 | `Delete` | Clear all finished tracks |
