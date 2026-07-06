@@ -25,9 +25,47 @@ Alternatively, download the ZIP file from GitHub:
 
 ### Step 2: Install Dependencies
 
+We highly recommend installing VocalTrack's dependencies into a **Python Virtual Environment**. This prevents conflicts with other Python packages on your system.
+
+#### Option A: Virtual Environment Installation (Recommended)
+
+**1. Create the virtual environment (called vocaltrack-env):**
+- **Windows:** `python -m venv vocaltrack-env`
+- **macOS / Linux:** `python3 -m venv vocaltrack-env`
+
+**2. Activate the virtual environment:**
+- **Windows (Command Prompt):** `vocaltrack-env\Scripts\activate.bat`
+- **Windows (PowerShell):** `.\vocaltrack-env\Scripts\Activate.ps1`
+- **macOS / Linux:** `source vocaltrack-env/bin/activate`
+
+*(Note: You will need to activate the virtual environment every time you want to run VocalTrack).*
+
+**3. Install the dependencies:**
+
+*(Because the virtual environment is active, you can simply use `pip` on all operating systems).*
 ```bash
+pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 ```
+
+#### Option B: Main System Installation
+
+If you prefer to install the packages globally into your main Python installation (not recommended as it may conflict with other projects):
+
+- **Windows:**
+  ```cmd
+  pip install --upgrade pip setuptools wheel
+  pip install -r requirements.txt
+  ```
+
+- **macOS / Linux:**
+  *(Note: You usually need to use `pip3` instead of `pip` outside a virtual environment. You may also need to append the `--user` flag if you encounter permission errors).*
+  ```bash
+  pip3 install --upgrade pip setuptools wheel
+  pip3 install -r requirements.txt
+  ```
+
+#### Installed Packages
 
 This installs all required packages:
 
@@ -104,11 +142,42 @@ No special permissions typically required. If issues occur, check PulseAudio/ALS
 
 ### Start the Launcher
 
-From the project root directory:
+From the project root directory, the launch command depends on how you installed the dependencies:
 
-```bash
-python vocaltrack.py
-```
+**Option A: If using a Virtual Environment (Recommended)**
+
+You must activate the environment first before running the app.
+
+- **Windows (Command Prompt):**
+  ```cmd
+  vocaltrack-env\Scripts\activate.bat
+  python vocaltrack.py
+  ```
+- **Windows (PowerShell):**
+  ```powershell
+  .\vocaltrack-env\Scripts\Activate.ps1
+  python vocaltrack.py
+  ```
+- **macOS / Linux:**
+  ```bash
+  source vocaltrack-env/bin/activate
+  python3 vocaltrack.py
+  ```
+
+*(To exit the virtual environment when you're done, simply type `deactivate`)*
+
+**Option B: If using Main System Installation**
+
+If you installed dependencies globally, you can launch directly:
+
+- **Windows:**
+  ```cmd
+  python vocaltrack.py
+  ```
+- **macOS / Linux:**
+  ```bash
+  python3 vocaltrack.py
+  ```
 
 The PySide6 launcher window will appear.
 

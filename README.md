@@ -45,8 +45,13 @@ cd VocalTrack
 ```
 Or download from GitHub and unzip into local directory. 
 
-2. Install dependencies:
+2. Install dependencies (we highly recommend doing this inside a virtual environment):
 ```bash
+# Optional but recommended: Create and activate a virtual environment
+# Windows: python -m venv vocaltrack-env && vocaltrack-env\Scripts\activate
+# macOS/Linux: python3 -m venv vocaltrack-env && source vocaltrack-env/bin/activate
+
+# (Note: If you skip creating a virtual environment on macOS/Linux, you will likely need to use pip3 instead of pip below)
 pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 ```
