@@ -25,7 +25,7 @@ AUDIO_CONFIG = {
 
 # GUI - LiveVowel
 LIVEVOWEL_CONFIG = {
-    'gui_size': (800.0, 600.0),
+    'gui_size': (900.0, 700.0),
     'f1_range': (200.0, 1200.0),
     'f2_range': (500.0, 2700.0),
     'fps': 60,
@@ -36,8 +36,8 @@ LIVEVOWEL_CONFIG = {
 
 # GUI - LivePitch
 LIVEPITCH_CONFIG = {
-    'gui_width': 850,
-    'gui_height': 500,
+    'gui_width': 1200,
+    'gui_height': 600,
     'min_f0': 75,
     'max_f0': 500,
     'fps': 60,
@@ -50,7 +50,7 @@ LIVEPITCH_CONFIG = {
 # GUI - LiveSpectrogram
 LIVESPECTROGRAM_CONFIG = {
     'gui_width': 1200,  # Display window width in pixels (typical: 1200 for widescreen)
-    'gui_height': 600,  # Display window height in pixels; larger height = finer frequency resolution
+    'gui_height': 650,  # Display window height in pixels; larger height = finer frequency resolution
     'max_freq': 5000,  # Maximum frequency to display in Hz; limits X-axis range (avoids aliasing above 5kHz for 10kHz sample rate)
     'display_seconds': 3.0,  # Time window duration in seconds; controls horizontal scroll speed (5s typical for real-time response)
     'colormap': 'plasma',  # Matplotlib colormap name for magnitude-to-color mapping; 'plasma' is perceptually uniform
@@ -64,7 +64,7 @@ LIVESPECTROGRAM_CONFIG = {
 # GUI - LiveSpectrum
 LIVESPECTRUM_CONFIG = {
     'gui_width': 1200,  # Display window width in pixels
-    'gui_height': 600,  # Display window height in pixels
+    'gui_height': 650,  # Display window height in pixels
     'max_freq': 5000,  # Maximum frequency to display in Hz
     'dynamic_range': 40,  # Dynamic range in dB for amplitude display
     'fps': 60,  # Frame rate for display refresh
