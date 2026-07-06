@@ -378,7 +378,13 @@ class LiveVowel(BaseAudioVisualizer):
                         )
                         # Create a new Point sprite at calculated screen position
                         # Sprite contains the Sound object and visual representation (red circle)
-                        self.point = Point(self.sound, plot_x, plot_y)
+                        self.point = Point(
+                            self.sound, 
+                            plot_x, 
+                            plot_y, 
+                            f1=self.smoother.plot_f1, 
+                            f2=self.smoother.plot_f2
+                        )
                         self.point_created_this_frame = True
                         
                         # Check if a new track has started (track number incremented by smoother)
@@ -447,10 +453,22 @@ class LiveVowel(BaseAudioVisualizer):
         # Check if user pressed L to toggle log/linear frequency scale
         if self.event_holder.l_key:
             self.freq_scale = 'linear' if self.freq_scale == 'log' else 'log'
+            self.gui_info['freq_scale'] = self.freq_scale
             scale_status = "logarithmic" if self.freq_scale == 'log' else "linear"
             logger.info(f"Frequency scale toggled to {scale_status}")
-
-        # Handle +/- keys to adjust minimum RMS threshold
+            
+            # Recalculate coordinates for all existing points
+            for pt in self.all_points:
+                if getattr(pt, 'f1', None) is not None and getattr(pt, 'f2', None) is not None:
+                    new_x, new_y = self.point_coordinates(self.gui_info, pt.f1, pt.f2)
+                    pt.rect.center = (new_x, new_y)
+            
+            # Recalculate coordinates for all IPA labels
+            for textbox in self.ipalabels.textboxes:
+                if textbox.f1 is not None and textbox.f2 is not None:
+                    new_x, new_y = self.ipalabels._hz_to_pixels(textbox.f1, textbox.f2)
+                    textbox.rect.center = (new_x, new_y)
+        # Handles +/- keys to adjust minimum RMS threshold
         if self.event_holder.plus_equals:
             self.adjust_min_rms(+3)  # Increase minimum RMS threshold by 3 dB
         
