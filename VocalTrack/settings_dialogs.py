@@ -218,7 +218,7 @@ class SmootherSettingsDialog(BaseSettingsDialog):
         # Create a text box for memory size (how many past dots it remembers)
         self.memory_input = QLineEdit(str(saved.get('memory_n', config.SMOOTHER_CONFIG.get('memory_n', 5))))
         # Add it to the form
-        self.form.addRow("Memory (frames):", self.memory_input)
+        self.form.addRow("Memory frames (1=no memory)", self.memory_input)
         
         # Create a text box for stability (how far a dot can jump before we consider it an error)
         self.stability_input = QLineEdit(str(saved.get('stability_threshold', config.SMOOTHER_CONFIG.get('stability_threshold', 0.32))))
