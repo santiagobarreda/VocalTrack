@@ -112,3 +112,14 @@ COLORS = {
     'blue': (0, 0, 255),
     'grey': (50, 50, 50),
 }
+
+# Save deep copies of initial/factory defaults for "Defaults" button reversion
+import copy
+FACTORY_AUDIO_CONFIG = copy.deepcopy(AUDIO_CONFIG)
+FACTORY_ANALYSIS_CONFIG = copy.deepcopy(ANALYSIS_CONFIG)
+FACTORY_LIVEVOWEL_CONFIG = copy.deepcopy(LIVEVOWEL_CONFIG)
+FACTORY_LIVEPITCH_CONFIG = copy.deepcopy(LIVEPITCH_CONFIG)
+FACTORY_LIVESPECTROGRAM_CONFIG = copy.deepcopy(LIVESPECTROGRAM_CONFIG)
+FACTORY_LIVESPECTRUM_CONFIG = copy.deepcopy(LIVESPECTRUM_CONFIG)
+FACTORY_SMOOTHER_CONFIG = copy.deepcopy(SMOOTHER_CONFIG)
+FACTORY_EXPORT_CONFIG = copy.deepcopy(EXPORT_CONFIG)

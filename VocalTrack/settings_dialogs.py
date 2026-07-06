@@ -51,24 +51,34 @@ class BaseSettingsDialog(QDialog):
         # Put the empty form into our vertical stack
         self.main_layout.addLayout(self.form)
         
-        # Standard OK/Cancel Buttons
+        # Standard OK/Cancel/Defaults Buttons
         # Create a horizontal row layout to hold buttons side-by-side
         self.btn_layout = QHBoxLayout()
         # Create the OK button
         self.ok_btn = QPushButton("OK")
         # Create the Cancel button
         self.cancel_btn = QPushButton("Cancel")
+        # Create the Defaults button
+        self.defaults_btn = QPushButton("Defaults")
         # If the user clicks OK, tell the window to close and say it was successful
         self.ok_btn.clicked.connect(self.accept)
         # If the user clicks Cancel, tell the window to close and reject changes
         self.cancel_btn.clicked.connect(self.reject)
+        # If the user clicks Defaults, revert all fields to factory defaults
+        self.defaults_btn.clicked.connect(self.load_defaults)
         # Put the OK button into the horizontal row
         self.btn_layout.addWidget(self.ok_btn)
         # Put the Cancel button into the horizontal row next to it
         self.btn_layout.addWidget(self.cancel_btn)
+        # Put the Defaults button into the horizontal row next to it
+        self.btn_layout.addWidget(self.defaults_btn)
         
         # Put the horizontal row of buttons at the very bottom of the vertical stack
         self.main_layout.addLayout(self.btn_layout)
+
+    def load_defaults(self):
+        """Reset inputs to factory default values. Subclasses should override this."""
+        pass
 
 
 class AnalysisSettingsDialog(BaseSettingsDialog):
@@ -204,6 +214,22 @@ class AnalysisSettingsDialog(BaseSettingsDialog):
             'pitch_method': self.pitch_method_combo.currentText(),
         }
 
+    def load_defaults(self):
+        self.chunk_input.setText(str(config.FACTORY_AUDIO_CONFIG['chunk_ms']))
+        self.chunks_input.setText(str(config.FACTORY_AUDIO_CONFIG['number_of_chunks']))
+        self.max_formant_input.setText(str(config.FACTORY_ANALYSIS_CONFIG['max_formant']))
+        self.n_formants_input.setText(str(config.FACTORY_ANALYSIS_CONFIG['n_formants']))
+        self.min_f0_input.setText(str(config.FACTORY_ANALYSIS_CONFIG['min_f0']))
+        self.max_f0_input.setText(str(config.FACTORY_ANALYSIS_CONFIG['max_f0']))
+        self.min_confidence_input.setText(str(config.FACTORY_ANALYSIS_CONFIG['min_confidence']))
+        self.min_rms_input.setText(str(config.FACTORY_AUDIO_CONFIG['min_rms_db']))
+        
+        idx1 = self.formant_method_combo.findText(config.FACTORY_ANALYSIS_CONFIG['formant_method'])
+        if idx1 >= 0: self.formant_method_combo.setCurrentIndex(idx1)
+        
+        idx2 = self.pitch_method_combo.findText(config.FACTORY_ANALYSIS_CONFIG['pitch_method'])
+        if idx2 >= 0: self.pitch_method_combo.setCurrentIndex(idx2)
+
 
 class SmootherSettingsDialog(BaseSettingsDialog):
     """Popup window for adjusting how the software smooths out shaky tracking lines."""
@@ -291,6 +317,16 @@ class SmootherSettingsDialog(BaseSettingsDialog):
             'euro_dcutoff': safe_float(self.euro_dcutoff_input.text(), 0.5),
             'velocity_power': safe_float(self.velocity_power_input.text(), 1.5),
         }
+
+    def load_defaults(self):
+        self.memory_input.setText(str(config.FACTORY_SMOOTHER_CONFIG['memory_n']))
+        self.stability_input.setText(str(config.FACTORY_SMOOTHER_CONFIG['stability_threshold']))
+        self.skip_input.setText(str(config.FACTORY_SMOOTHER_CONFIG['skip_tolerance']))
+        self.use_euro_filter_checkbox.setChecked(bool(config.FACTORY_SMOOTHER_CONFIG['use_euro_filter']))
+        self.euro_min_cutoff_input.setText(str(config.FACTORY_SMOOTHER_CONFIG['euro_min_cutoff']))
+        self.euro_beta_input.setText(str(config.FACTORY_SMOOTHER_CONFIG['euro_beta']))
+        self.euro_dcutoff_input.setText(str(config.FACTORY_SMOOTHER_CONFIG['euro_dcutoff']))
+        self.velocity_power_input.setText(str(config.FACTORY_SMOOTHER_CONFIG['velocity_power']))
 
 
 
@@ -382,6 +418,22 @@ class PlottingSettingsDialog(BaseSettingsDialog):
             'freq_scale': scales[self.freq_scale_combo.currentIndex()],
         }
 
+    def load_defaults(self):
+        f1_range = config.FACTORY_LIVEVOWEL_CONFIG['f1_range']
+        f2_range = config.FACTORY_LIVEVOWEL_CONFIG['f2_range']
+        self.f1_min_input.setText(str(int(f1_range[0])))
+        self.f1_max_input.setText(str(int(f1_range[1])))
+        self.f2_min_input.setText(str(int(f2_range[0])))
+        self.f2_max_input.setText(str(int(f2_range[1])))
+        self.fps_input.setText(str(config.FACTORY_LIVEVOWEL_CONFIG['fps']))
+        
+        mode_map = {"single": 0, "track": 1, "all": 2}
+        idx1 = mode_map.get(config.FACTORY_LIVEVOWEL_CONFIG['display_mode'], 0)
+        self.display_mode_combo.setCurrentIndex(idx1)
+        
+        idx2 = 0 if config.FACTORY_LIVEVOWEL_CONFIG['freq_scale'] == 'log' else 1
+        self.freq_scale_combo.setCurrentIndex(idx2)
+
 
 
 class PitchPlotSettingsDialog(BaseSettingsDialog):
@@ -452,6 +504,18 @@ class PitchPlotSettingsDialog(BaseSettingsDialog):
             # Look up the scale code word based on dropdown index
             'freq_scale': scales[self.freq_scale_combo.currentIndex()],
         }
+
+    def load_defaults(self):
+        self.min_f0_input.setText(str(config.FACTORY_LIVEPITCH_CONFIG['min_f0']))
+        self.max_f0_input.setText(str(config.FACTORY_LIVEPITCH_CONFIG['max_f0']))
+        
+        idx1 = 0 if config.FACTORY_LIVEPITCH_CONFIG['pitch_plot_mode'] == 'fixed' else 1
+        self.mode_combo.setCurrentIndex(idx1)
+        
+        self.window_width_input.setText(str(config.FACTORY_LIVEPITCH_CONFIG['pitch_display_seconds']))
+        
+        idx2 = 0 if config.FACTORY_LIVEPITCH_CONFIG['freq_scale'] == 'log' else 1
+        self.freq_scale_combo.setCurrentIndex(idx2)
 
 
 
@@ -543,6 +607,19 @@ class SpectrogramSettingsDialog(BaseSettingsDialog):
             'padding_length_ms': safe_float(self.padding_length_input.text(), 20.0),
         }
 
+    def load_defaults(self):
+        self.max_freq_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['max_freq']))
+        self.display_seconds_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['display_seconds']))
+        self.fps_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['fps']))
+        
+        idx = self.colormap_combo.findText(config.FACTORY_LIVESPECTROGRAM_CONFIG['colormap'])
+        if idx >= 0: self.colormap_combo.setCurrentIndex(idx)
+        
+        self.dynamic_range_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['dynamic_range']))
+        self.chunk_ms_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['chunk_ms']))
+        self.number_of_chunks_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['number_of_chunks']))
+        self.padding_length_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['padding_length_ms']))
+
 
 
 class SpectrumSettingsDialog(BaseSettingsDialog):
@@ -617,6 +694,15 @@ class SpectrumSettingsDialog(BaseSettingsDialog):
             # Convert line smoothing value to decimal
             'smoothing': safe_float(self.smoothing_input.text(), 0.7),
         }
+
+    def load_defaults(self):
+        self.max_freq_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['max_freq']))
+        self.dynamic_range_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['dynamic_range']))
+        self.chunk_ms_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['chunk_ms']))
+        self.number_of_chunks_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['number_of_chunks']))
+        self.fps_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['fps']))
+        self.padding_length_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['padding_length_ms']))
+        self.smoothing_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['smoothing']))
 
 
 
@@ -704,3 +790,15 @@ class RecordingSettingsDialog(BaseSettingsDialog):
             'save_original_audio': self.save_original_audio_checkbox.isChecked(),
             'save_downsampled_audio': self.save_downsampled_audio_checkbox.isChecked(),
         }
+
+    def load_defaults(self):
+        self.save_recordings_checkbox.setChecked(bool(config.FACTORY_EXPORT_CONFIG['save_recordings']))
+        self.save_original_audio_checkbox.setChecked(bool(config.FACTORY_EXPORT_CONFIG['save_original_audio']))
+        self.save_downsampled_audio_checkbox.setChecked(bool(config.FACTORY_EXPORT_CONFIG['save_downsampled_audio']))
+        
+        # Reset microphone to the default device index
+        if self.device_combo.isEnabled():
+            for idx in range(self.device_combo.count()):
+                if '[DEFAULT]' in self.device_combo.itemText(idx):
+                    self.device_combo.setCurrentIndex(idx)
+                    break
