@@ -25,7 +25,7 @@ AUDIO_CONFIG = {
 
 # GUI - LiveVowel
 LIVEVOWEL_CONFIG = {
-    'gui_size': (900.0, 700.0),
+    'gui_size': (900.0, 650.0),
     'f1_range': (200.0, 1200.0),
     'f2_range': (500.0, 2700.0),
     'fps': 60,
@@ -37,7 +37,7 @@ LIVEVOWEL_CONFIG = {
 # GUI - LivePitch
 LIVEPITCH_CONFIG = {
     'gui_width': 1200,
-    'gui_height': 600,
+    'gui_height': 650,
     'min_f0': 75,
     'max_f0': 500,
     'fps': 60,

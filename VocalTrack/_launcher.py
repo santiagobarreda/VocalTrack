@@ -396,22 +396,49 @@ class LauncherWindow(QMainWindow):
             if needs_extra_args:
                 cfg = config.LIVESPECTROGRAM_CONFIG if "Spectrogram" in name else config.LIVESPECTRUM_CONFIG
                 user_cfg = self.spectrogram_settings if "Spectrogram" in name else self.spectrum_settings
-                module_class(
+                app_instance = module_class(
                     spec_config=dict(cfg, **user_cfg),
                     audio_config=audio_cfg,
                     analysis_config=analysis_cfg,
                     input_device_index=self.audio_input_device
                 )
+                if "Spectrogram" in name:
+                    self.spectrogram_settings['gui_width'] = app_instance.spec_config['gui_width']
+                    self.spectrogram_settings['gui_height'] = app_instance.spec_config['gui_height']
+                else:
+                    self.spectrum_settings['gui_width'] = app_instance.spec_config['gui_width']
+                    self.spectrum_settings['gui_height'] = app_instance.spec_config['gui_height']
             else:
-                module_class(
+                app_instance = module_class(
                     audio_config=audio_cfg,
                     analysis_config=analysis_cfg,
                     input_device_index=self.audio_input_device
                 )
+                if name == "LiveVowel":
+                    self.plotting_settings['gui_size'] = app_instance.gui_info['gui_size']
+                elif name == "LivePitch":
+                    self.pitch_plot_settings['gui_width'] = app_instance.pitch_config['gui_width']
+                    self.pitch_plot_settings['gui_height'] = app_instance.pitch_config['gui_height']
         except Exception as e:
             import traceback; traceback.print_exc()
             self.status_label.setText(f"Error: {e}")
         finally:
+            # Save any on-the-fly window resize changes to user settings
+            mgr = settings_manager.get_settings_manager()
+            if self.plotting_settings:
+                config.LIVEVOWEL_CONFIG.update(self.plotting_settings)
+                mgr.set('plotting', self.plotting_settings)
+            if self.pitch_plot_settings:
+                config.LIVEPITCH_CONFIG.update(self.pitch_plot_settings)
+                mgr.set('pitch_plot', self.pitch_plot_settings)
+            if self.spectrogram_settings:
+                config.LIVESPECTROGRAM_CONFIG.update(self.spectrogram_settings)
+                mgr.set('spectrogram', self.spectrogram_settings)
+            if self.spectrum_settings:
+                config.LIVESPECTRUM_CONFIG.update(self.spectrum_settings)
+                mgr.set('spectrum', self.spectrum_settings)
+            mgr.save()
+
             self.show()
             self._set_launch_buttons_enabled(True)
             self.status_label.setText("Ready to launch")
@@ -422,14 +449,54 @@ def main():
     settings_manager.init_settings()
     mgr = settings_manager.get_settings_manager()
 
-    if analysis := mgr.get('analysis'): config.ANALYSIS_CONFIG.update(analysis)
-    if pitch := mgr.get('pitch_plot'): config.LIVEPITCH_CONFIG.update(pitch)
-    if plot := mgr.get('plotting'): config.LIVEVOWEL_CONFIG.update(plot)
-    if spec := mgr.get('spectrogram'): config.LIVESPECTROGRAM_CONFIG.update(spec)
-    if spectrum := mgr.get('spectrum'): config.LIVESPECTRUM_CONFIG.update(spectrum)
-
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
+
+    # Query monitor resolution on startup to configure smart defaults if no saved settings exist
+    screen = app.primaryScreen()
+    has_large_screen = True
+    if screen:
+        screen_size = screen.size()
+        # If screen vertical resolution is less than 1080 (e.g., 768p or lower), flag as small screen
+        if screen_size.height() < 1080:
+            has_large_screen = False
+
+    # Check for saved settings, update in-memory config
+    analysis = mgr.get('analysis')
+    if analysis:
+        config.ANALYSIS_CONFIG.update(analysis)
+
+    pitch = mgr.get('pitch_plot')
+    if pitch:
+        config.LIVEPITCH_CONFIG.update(pitch)
+    elif not has_large_screen:
+        # Override to small screen defaults for 768p
+        config.LIVEPITCH_CONFIG['gui_width'] = 1400
+        config.LIVEPITCH_CONFIG['gui_height'] = 900
+
+    plot = mgr.get('plotting')
+    if plot:
+        config.LIVEVOWEL_CONFIG.update(plot)
+    elif not has_large_screen:
+        # Override to small screen defaults for 768p
+        config.LIVEVOWEL_CONFIG['gui_size'] = (1200.0, 900.0)
+
+    spec = mgr.get('spectrogram')
+    if spec:
+        config.LIVESPECTROGRAM_CONFIG.update(spec)
+    elif not has_large_screen:
+        # Override to small screen defaults for 768p
+        config.LIVESPECTROGRAM_CONFIG['gui_width'] = 1400
+        config.LIVESPECTROGRAM_CONFIG['gui_height'] = 900
+
+    spectrum = mgr.get('spectrum')
+    if spectrum:
+        config.LIVESPECTRUM_CONFIG.update(spectrum)
+    elif not has_large_screen:
+        # Override to small screen defaults for 768p
+        config.LIVESPECTRUM_CONFIG['gui_width'] = 1400
+        config.LIVESPECTRUM_CONFIG['gui_height'] = 900
+
     window = LauncherWindow()
     window.show()
     sys.exit(app.exec())

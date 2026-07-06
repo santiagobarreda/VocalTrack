@@ -431,6 +431,14 @@ class LiveSpectrum(BaseAudioVisualizer):
         # Handle base events (quit, grid/help toggle)
         self.handle_base_events(self.event_holder)
         
+        # Handle window resize events
+        if self.event_holder.resize is not None:
+            # Update internal dimensions
+            self.spec_config['gui_width'] = self.event_holder.resize.w
+            self.spec_config['gui_height'] = self.event_holder.resize.h
+            # Recreate screen with new dimensions
+            self.screen = pygame.display.set_mode((self.spec_config['gui_width'], self.spec_config['gui_height']), pygame.RESIZABLE)
+        
         # Handle gain adjustment with +/- keys (3 dB per press)
         if self.event_holder.plus_equals:
             self.gain_offset_db += 3.0

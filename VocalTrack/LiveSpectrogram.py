@@ -461,6 +461,9 @@ class LiveSpectrogram(BaseAudioVisualizer):
            # Update window size
                 self.GUI_WIDTH = self.event_holder.resize.w
                 self.GUI_HEIGHT = self.event_holder.resize.h
+                # Update config so dimensions can be persisted
+                self.spec_config['gui_width'] = self.GUI_WIDTH
+                self.spec_config['gui_height'] = self.GUI_HEIGHT
                 # Recreate screen with new dimensions
                 self.screen = pygame.display.set_mode((self.GUI_WIDTH, self.GUI_HEIGHT), pygame.RESIZABLE)
                 # Recreate spectrogram surface with new dimensions
