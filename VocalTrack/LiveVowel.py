@@ -119,7 +119,7 @@ class LiveVowel(BaseAudioVisualizer):
         self.recording_active = False  # Start with recording off
         # Flag to toggle green template IPA symbols (from template) on/off (Ctrl+T)
         # When True, all template vowels are shown; when False, they are hidden (but can be toggled individually in menu)
-        self.show_template = False  # Start with template not visible
+        self.show_template = self.gui_info.get('show_vowel_template', False)
         self.keep_running = True  # Set to False to exit application
         # Display mode for visualization ("single", "track", or "all")
         self.display_mode = self.gui_info.get('display_mode', 'single')

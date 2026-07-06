@@ -274,7 +274,7 @@ class IPALabels:
                 # For green set: enable template vowels. For blue set: all disabled
                 if set_idx == 0:  # Green set
                     is_template = image_num in self.template_image_nums
-                    tmp_button.clicked = is_template
+                    tmp_button.clicked = is_template and self.gui_info.get('show_vowel_template', False)
                 else:  # Blue set
                     tmp_button.clicked = False
                 
@@ -286,7 +286,7 @@ class IPALabels:
                     vowel_data = template_by_image[image_num]
                     f1, f2 = vowel_data['f1'], vowel_data['f2']
                     label_x, label_y = self._hz_to_pixels(f1, f2)
-                    label_visible = True
+                    label_visible = self.gui_info.get('show_vowel_template', False)
                 else:
                     # Blue set or non-template green: start at default position (hidden)
                     f1, f2 = None, None
