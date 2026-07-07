@@ -186,7 +186,7 @@ pip install praat-parselmouth
 
 5. **Verify analysis parameters**:
    - For LivePitch: Check that voice is within `min_f0` to `max_f0` range
-   - For LiveVowel: Ensure you pressed `Ctrl+R` or hid the help overlay (`Ctrl+H`) to start recording
+   - For LiveVowel: Ensure you pressed `Ctrl+R` or hid the help overlay (`Ctrl+?`) to start recording
 
 ### Crackling, popping, or distorted audio
 
@@ -356,7 +356,7 @@ pip install praat-parselmouth
    - Solution: Use LiveVowel or LivePitch for automatic export
 
 2. **Recording not started**:
-   - LiveVowel: Must press `Ctrl+R` or hide the help overlay with `Ctrl+H` to enter recording state before speaking
+   - LiveVowel: Must press `Ctrl+R` or hide the help overlay with `Ctrl+?` to enter recording state before speaking
    - LivePitch: Must hold `Space` key while speaking
    - Solution: Check that recording control was activated
 

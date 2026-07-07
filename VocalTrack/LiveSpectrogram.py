@@ -412,7 +412,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
         
         # Define help text lines (key: description)
         help_lines = [
-            ('Ctrl/Cmd+H', 'Toggle this help overlay'),
+            ('Ctrl/Cmd+?', 'Toggle this help overlay'),
             ('ESC', 'Quit application'),
             ('', ''),  # Blank line for spacing
             ('+  / -', 'Decrease / Increase dynamic range'),
@@ -452,7 +452,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
         """Handle pygame events including user keyboard input and window resize.
         
         Processes quit signals, dynamic range adjustment (+/- keys),
-        gain adjustment (Ctrl+/Ctrl-), help overlay toggle (Ctrl+H),
+        gain adjustment (Ctrl+/Ctrl-), help overlay toggle (Ctrl+?),
         and window resize events. Updates display state accordingly.
         """
         
@@ -517,8 +517,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
             # Log the new gain setting to console for user feedback
             logger.info(f"Gain: {self.gain_db} dB")
         
-        # HELP OVERLAY TOGGLE WITH CTRL+H
-        # Ctrl+H toggles the help overlay display
+        # Ctrl+? toggles the help overlay display
         if self.event_holder.ctrl_h:
             self.show_help = not self.show_help
             logger.info(f"Help overlay: {'ON' if self.show_help else 'OFF'}")
@@ -662,7 +661,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
                 self.draw_gain_indicator()
                 self.draw_mode_status()
                 
-                # DRAW HELP OVERLAY (if toggled on with Ctrl/Cmd+H)
+                # DRAW HELP OVERLAY (if toggled on with Ctrl/Cmd+?)
                 if self.show_help:
                     self.draw_help_overlay()
                 

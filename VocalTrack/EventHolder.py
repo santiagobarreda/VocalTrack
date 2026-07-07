@@ -40,7 +40,7 @@ class EventHolder:
         self.minus_underscore = None  # Minus/underscore pressed (decrease threshold)
         self.ctrl_plus = None         # Ctrl+Plus pressed (increase gain)
         self.ctrl_minus = None        # Ctrl+Minus pressed (decrease gain)
-        self.ctrl_h = None            # Ctrl+H pressed (toggle help overlay)
+        self.ctrl_h = None            # Ctrl+? pressed (toggle help overlay)
         self.ctrl_s = None            # Ctrl+S pressed (save current IPA template)
         self.ctrl_g = None            # Ctrl+G pressed (toggle grid)
         self.ctrl_l = None            # Ctrl+L pressed (toggle log/linear frequency scale)
@@ -102,8 +102,8 @@ class EventHolder:
                 elif event.mod & modifier_mask and event.key in (pygame.K_MINUS, pygame.K_UNDERSCORE, pygame.K_KP_MINUS):
                     # Ctrl+Minus pressed - decrease gain
                     self.ctrl_minus = event
-                elif event.mod & modifier_mask and event.key == pygame.K_h:
-                    # Ctrl+H pressed - toggle help overlay
+                elif event.mod & modifier_mask and (event.key in (pygame.K_QUESTION, pygame.K_SLASH) or getattr(event, 'unicode', '') == '?'):
+                    # Ctrl+? pressed - toggle help overlay
                     self.ctrl_h = event
                 elif event.mod & modifier_mask and event.key == pygame.K_s:
                     # Ctrl+S pressed - save current IPA template

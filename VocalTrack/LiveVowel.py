@@ -438,7 +438,7 @@ class LiveVowel(BaseAudioVisualizer):
         # Handle base events (quit, grid/help toggle, RMS adjustment, backspace/delete)
         self.handle_base_events(self.event_holder)
         
-        # Handle Ctrl+H recording pause/resume (help overlay toggle is handled by base class)
+        # Handle Ctrl+? recording pause/resume (help overlay toggle is handled by base class)
         if self.event_holder.ctrl_h:
             # show_help has already been toggled by handle_base_events()
             if self.show_help:
@@ -838,7 +838,7 @@ class LiveVowel(BaseAudioVisualizer):
             "Ctrl/Cmd+G - Toggle grid",
             "Ctrl/Cmd+L - Toggle log/linear frequency scale",
             "Scroll - Scale IPA labels (in vowel picker mode)",
-            "Ctrl/Cmd+H - Toggle this help overlay",
+            "Ctrl/Cmd+? - Toggle this help overlay",
         ]
         
         # Draw title
@@ -856,7 +856,7 @@ class LiveVowel(BaseAudioVisualizer):
             y_pos += 40
         
         # Footer text
-        footer = font_normal.render("Press Ctrl+H to close help", True, (200, 200, 200))
+        footer = font_normal.render("Press Ctrl+? to close help", True, (200, 200, 200))
         footer_rect = footer.get_rect(center=(self.gui_info['gui_size'][0] // 2, self.gui_info['gui_size'][1] - 30))
         self.screen.blit(footer, footer_rect)
 

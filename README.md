@@ -90,7 +90,7 @@ Click one of the four launch buttons:
 **Common (all modes where implemented):**
 - `ESC`: Quit and save (if applicable)
 - `Ctrl+G`: Toggle grid overlay
-- `Ctrl+H`: Toggle help overlay
+- `Ctrl+?`: Toggle help overlay
 - `+`/`-`: Adjust threshold/gain/dynamic range
 
 **Note for macOS users:** all `Ctrl+...` shortcuts also support `Cmd+...`.
@@ -98,7 +98,7 @@ Click one of the four launch buttons:
 **LiveVowel:**
 - `Ctrl+V`: Toggle IPA vowel picker
 - `Ctrl+R`: Toggle recording state
-- `Ctrl+H`: Toggle help overlay (stops recording when shown, starts when hidden)
+- `Ctrl+?`: Toggle help overlay (stops recording when shown, starts when hidden)
 - `Ctrl+T`: Toggle vowel template display
 - `Ctrl+S`: Save currently toggled template labels + frequency positions
 - `Ctrl+L`: Toggle log/linear frequency scale

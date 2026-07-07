@@ -759,7 +759,7 @@ class LivePitch(BaseAudioVisualizer):
             "Left click  - Add manual annotation point",  # Place a green marker
             "Right click - Clear all annotation points",  # Remove all green markers
             "Ctrl/Cmd+G - Toggle grid overlay",  # Show/hide time and frequency grid
-            "Ctrl/Cmd+H - Toggle this help",  # Show/hide this overlay
+            "Ctrl/Cmd+? - Toggle this help",  # Show/hide this overlay
             "ESC - Quit application",  # Exit the program
         ]  # End help text definition
         

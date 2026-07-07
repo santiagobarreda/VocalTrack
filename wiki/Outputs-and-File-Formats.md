@@ -130,7 +130,7 @@ Only frames meeting **all** of the following criteria are written to CSV:
 `track_number` increments when:
 - Voicing drops and resumes (new voiced segment)
 - Formant trajectory becomes unstable
-- Recording is stopped and restarted (Ctrl+R or Ctrl+H toggle)
+- Recording is stopped and restarted (Ctrl+R or Ctrl+? toggle)
 
 Example: Three separate vowels → track_number values 1, 2, 3
 
@@ -563,8 +563,8 @@ tar -czf recordings_archive.tar.gz recordings/
 2. **No voiced frames detected**: All frames filtered out due to voicing/f0 range
    - Solution: Check that f0 is within configured range, adjust `min_f0`/`max_f0`
 
-3. **Recording not started**: For LiveVowel, must press Ctrl+R (or Ctrl+H to hide help) to enter recording state
-   - Solution: Verify you pressed Ctrl+R or Ctrl+H before speaking
+3. **Recording not started**: For LiveVowel, must press Ctrl+R (or Ctrl+? to hide help) to enter recording state
+   - Solution: Verify you pressed Ctrl+R or Ctrl+? before speaking
 
 4. **Export disabled in config**: `save_recordings`, `save_wav`, or `save_csv` set to False (or not enabled in Recording Settings)
    - Solution: Open Recording Settings and check "Save recordings", or check `EXPORT_CONFIG` in `config.py`

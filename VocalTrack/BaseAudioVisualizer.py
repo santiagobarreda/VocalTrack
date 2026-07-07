@@ -116,7 +116,7 @@ class BaseAudioVisualizer:
             grid_status = "ON" if self.show_grid else "OFF"
             logger.debug(f"Grid toggled {grid_status}")
         
-        # If the user presses Ctrl+H...
+        # If the user presses Ctrl+?...
         if event_holder.ctrl_h:
             # Flip the help menu switch
             self.show_help = not self.show_help

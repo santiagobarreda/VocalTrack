@@ -33,7 +33,7 @@ The display shows a 2D plot in the style of the IPA vowel quadrilateral:
   - Pre-loaded vowel templates (toggle with `Ctrl+T`). These come in the 'templates' folder. If you rename one to 'vowel_template.csv', that file will be used. If not such file exists templates will not work
   - Menu to toggle IPA symbols on/off (toggle with `Ctrl+V`). The IPA symbols can be dragged aroundto provide markers or targets for speakers
   - Grid lines (toggle with `Ctrl+G`)
-  - Help overlay (toggle with `Ctrl+H`)
+  - Help overlay (toggle with `Ctrl+?`)
 
 ### Display Modes
 
@@ -57,10 +57,9 @@ Three visualization modes are available (configure in Formant Plot Settings):
 |-----|--------|
 | `Ctrl+V` | Toggle IPA chooser menu |
 | `Ctrl+R` | Toggle recording state |
-| `Ctrl+H` | Toggle help overlay (stops recording when shown, starts when hidden) |
+| `Ctrl+?` | Toggle help overlay (stops recording when shown, starts when hidden) |
 | `Ctrl+T` | Toggle vowel template overlay (IPA symbols) |
 | `Ctrl+G` | Toggle grid overlay |
-| `Ctrl+H` | Toggle help overlay |
 | `+` / `=` | Increase minimum RMS threshold (filter out more noise) |
 | `-` / `_` | Decrease minimum RMS threshold (capture quieter sounds) |
 | `Backspace` | Undo last finished track |
@@ -161,7 +160,7 @@ The display shows:
 - **Pitch contour**: Connected line showing f0 trajectory
 - **Optional overlays**:
   - Grid lines (toggle with `Ctrl+G`)
-  - Help overlay (toggle with `Ctrl+H`)
+  - Help overlay (toggle with `Ctrl+?`)
 
 ### Plot Modes
 
@@ -184,7 +183,7 @@ Two scrolling modes are available (configure in Pitch Plot Settings):
 | `Space` (hold) | Start recording pitch segment (push-to-talk) |
 | `Space` (release) | Stop recording and export segment |
 | `Ctrl+G` | Toggle grid overlay |
-| `Ctrl+H` | Toggle help overlay |
+| `Ctrl+?` | Toggle help overlay |
 | `+` / `=` | Increase minimum RMS threshold |
 | `-` / `_` | Decrease minimum RMS threshold |
 | `Backspace` | Remove most recent finished track |
@@ -304,7 +303,7 @@ The display shows:
 - **Color-coding**: Intensity mapped to colormap (bright = high energy, dark = low energy)
 - **Scrolling behavior**: New spectrum appended on right, old data shifts left
 - **Optional overlays**:
-  - Help overlay (toggle with `Ctrl+H`)
+  - Help overlay (toggle with `Ctrl+?`)
 
 ### Colormap Options
 
@@ -325,7 +324,7 @@ Choose from matplotlib colormaps (configure in Spectrogram Settings):
 | `-` / `_` | Increase dynamic range (increase contrast) |
 | `Ctrl++` / `Ctrl+=` | Increase gain (make brighter overall) |
 | `Ctrl+-` / `Ctrl+_` | Decrease gain (make darker overall) |
-| `Ctrl+H` | Toggle help overlay |
+| `Ctrl+?` | Toggle help overlay |
 | `Esc` | Quit |
 
 **Note**: Grid toggle (`Ctrl+G`) is not implemented in LiveSpectrogram.
@@ -443,7 +442,7 @@ The display shows:
 - **Averaging**: Spectrum is averaged across multiple audio frames for stability
 - **Optional overlays**:
   - Grid lines (toggle with `Ctrl+G`)
-  - Help overlay (toggle with `Ctrl+H`)
+  - Help overlay (toggle with `Ctrl+?`)
 
 ### Interaction and Controls
 
@@ -452,7 +451,7 @@ The display shows:
 | `+` / `=` | Increase gain offset (shift spectrum up) |
 | `-` / `_` | Decrease gain offset (shift spectrum down) |
 | `Ctrl+G` | Toggle grid overlay |
-| `Ctrl+H` | Toggle help overlay |
+| `Ctrl+?` | Toggle help overlay |
 | `Esc` | Quit |
 
 ### Workflow
@@ -553,11 +552,11 @@ The display shows:
 | Feature | LiveVowel | LivePitch | LiveSpectrogram | LiveSpectrum |
 |---------|-----------|-----------|-----------------|--------------|
 | **Primary display** | F1/F2 scatter plot | f0 contour line | Scrolling spectrogram | Static spectrum line |
-| **Recording control** | Ctrl+R or Ctrl+H (toggle) | Space (push-to-talk) | None (always on) | None (always on) |
+| **Recording control** | Ctrl+R or Ctrl+? (toggle) | Space (push-to-talk) | None (always on) | None (always on) |
 | **Exports WAV** | Yes | Yes | No (by default) | No (by default) |
 | **Exports CSV** | Yes (formants) | Yes (pitch) | No (by default) | No (by default) |
 | **Best for** | Vowel analysis | Intonation training | Phonetic transcription | Spectral analysis |
 | **Key advantage** | Direct vowel space visualization | Simple push-to-talk workflow | Rich acoustic detail | Harmonic structure |
 | **Typical use case** | Pronunciation training | Tone language learning | Formant transitions | Resonance monitoring |
 
-All modes share common controls (`Ctrl+G` for grid, `Ctrl+H` for help, `Esc` to quit) and support real-time parameter adjustment.
+All modes share common controls (`Ctrl+G` for grid, `Ctrl+?` for help, `Esc` to quit) and support real-time parameter adjustment.

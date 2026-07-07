@@ -41,7 +41,7 @@ A Pygame window opens showing the visualization.
 ### 4. Record and Visualize
 
 **LiveVowel:**
-- Press `Ctrl+R` to toggle recording state, or `Ctrl+H` to hide help and start recording
+- Press `Ctrl+R` to toggle recording state, or `Ctrl+?` to hide help and start recording
 - Speak naturally to see your vowel formants plotted in F1/F2 space
 - Visual feedback shows current formant position and trajectory tracks
 
@@ -66,7 +66,7 @@ All modes support real-time parameter adjustment:
 
 - **Minimum RMS threshold** (`+`/`-`): Filter out background noise
 - **Grid visibility** (`Ctrl+G`): Toggle reference grid overlay
-- **Help overlay** (`H` or `Ctrl+H`): Show keyboard shortcuts
+- **Help overlay** (`Ctrl+?`): Show keyboard shortcuts
 
 Mode-specific adjustments:
 - **LiveSpectrogram**: Gain (`Ctrl++`/`Ctrl+-`), Dynamic range (`+`/`-`)
@@ -152,7 +152,7 @@ Navigate to the `recordings/` folder to find:
 **Key controls:**
 - `+`/`-`: Decrease/increase dynamic range
 - `Ctrl++`/`Ctrl+-`: Increase/decrease gain
-- `Ctrl+H`: Toggle help overlay
+- `Ctrl+?`: Toggle help overlay
 
 ### LiveSpectrum - Real-Time FFT Display
 
@@ -171,7 +171,7 @@ Navigate to the `recordings/` folder to find:
 **Key controls:**
 - `+`/`-`: Adjust gain offset (dB)
 - `Ctrl+G`: Toggle grid overlay
-- `Ctrl+H`: Toggle help overlay
+- `Ctrl+?`: Toggle help overlay
 
 ## Common Keyboard Controls
 
@@ -181,7 +181,7 @@ These controls work across all four modes:
 |-----|--------|
 | `Esc` | Quit mode and save (if applicable) |
 | `Ctrl+G` | Toggle grid overlay |
-| `H` or `Ctrl+H` | Toggle help overlay with keyboard shortcuts |
+| `Ctrl+?` | Toggle help overlay with keyboard shortcuts |
 | `+` or `=` | Increase threshold/gain/dynamic range (mode-dependent) |
 | `-` or `_` | Decrease threshold/gain/dynamic range (mode-dependent) |
 
@@ -193,7 +193,7 @@ These controls work across all four modes:
 |-----|--------|
 | `Ctrl+V` | Toggle IPA chooser menu |
 | `Ctrl+R` | Toggle recording state |
-| `Ctrl+H` | Toggle help overlay (stops recording when shown, starts when hidden) |
+| `Ctrl+?` | Toggle help overlay (stops recording when shown, starts when hidden) |
 | `Ctrl+T` | Toggle vowel template overlay (IPA symbols) |
 | `Backspace` | Undo last finished track |
 | `Delete` | Clear all finished tracks |
@@ -215,7 +215,7 @@ These controls work across all four modes:
 |-----|--------|
 | `+`/`-` | Decrease/increase dynamic range |
 | `Ctrl++`/`Ctrl+-` | Increase/decrease gain (brightness) |
-| `Ctrl+H` | Toggle help overlay |
+| `Ctrl+?` | Toggle help overlay |
 
 ### LiveSpectrum Only
 
@@ -223,7 +223,7 @@ These controls work across all four modes:
 |-----|--------|
 | `+`/`-` | Adjust gain offset (dB) |
 | `Ctrl+G` | Toggle grid overlay |
-| `Ctrl+H` | Toggle help overlay |
+| `Ctrl+?` | Toggle help overlay |
 
 ## Recording and Export Behavior
 

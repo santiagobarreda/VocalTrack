@@ -328,7 +328,7 @@ Click one of the four launch buttons. A Pygame window opens with the real-time v
 
 **Tips for first-time use:**
 - Start with **LivePitch** (simplest workflow: hold Space to record)
-- Try **LiveVowel** next (press Ctrl+R or hide help with Ctrl+H to toggle recording)
+- Try **LiveVowel** next (press Ctrl+R or hide help with Ctrl+? to toggle recording)
 - Experiment with **LiveSpectrogram** for visual phonetics
 - Use **LiveSpectrum** for spectral analysis and resonance visualization
 
