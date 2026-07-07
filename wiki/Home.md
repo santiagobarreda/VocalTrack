@@ -17,12 +17,18 @@ Welcome to the VocalTrack documentation. This wiki provides comprehensive guides
 
 ## Quick Start
 
-1. **Install dependencies:**
+1. **Create and activate a virtual environment (Recommended):**
+   - **Windows:** `python -m venv vocaltrack-env` then `vocaltrack-env\Scripts\activate`
+   - **macOS/Linux:** `python3 -m venv vocaltrack-env` then `source vocaltrack-env/bin/activate`
+
+2. **Install dependencies:**
+   *(Use `python -m pip` instead of bare `pip` on Windows to avoid file-locking crashes during upgrade)*
    ```bash
+   python -m pip install --upgrade pip setuptools wheel
    pip install -r requirements.txt
    ```
 
-2. **Launch the GUI:**
+3. **Launch the GUI:**
    ```bash
    python vocaltrack.py
    ```
