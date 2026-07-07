@@ -38,6 +38,8 @@ class Sound:
                  max_f0=300,
                  min_confidence=0.2,
                  min_rms_db=None,
+                 formant_method='native',
+                 pitch_method='native',
                  compute_spectrum=False,
                  spectrum_nfft=512,
                  spectrum_dynamic_range=70.0,
@@ -103,6 +105,10 @@ class Sound:
         self.min_confidence = min_confidence
         # Minimum RMS amplitude in dB for analysis (None = no gating)
         self.min_rms_db = min_rms_db
+        # Method selector for formant backend.
+        self.formant_method = formant_method
+        # Method selector for pitch backend.
+        self.pitch_method = pitch_method
 
         # Spectrum calculation parameters
         self.compute_spectrum = compute_spectrum  # Whether to compute power spectrum
@@ -171,6 +177,7 @@ class Sound:
             pitch_res = get_pitch(
                 self.samples if self.samples is not None else np.array([]),
                 sample_rate=self.sample_rate,
+                method=self.pitch_method,
                 min_f0=self.min_f0,
                 max_f0=self.max_f0,
                 min_confidence=self.min_confidence,
@@ -194,6 +201,7 @@ class Sound:
                 ff = get_formants(
                     self.samples,
                     sample_rate=self.sample_rate,
+                    method=self.formant_method,
                     max_formant=int(self.max_formant),
                     robust=self.robust_formants,
                     window_length=self.window_length,

@@ -16,13 +16,16 @@ class Point(pygame.sprite.Sprite):
         color: RGB tuple for point color
     """
     # Initialize Point instance with optional parameters (defaults provided)
-    def __init__(self, sound=None, plot_x=-100, plot_y=-100, radius=12, color=(166, 33, 64)):
+    def __init__(self, sound=None, plot_x=-100, plot_y=-100, radius=12, color=(166, 33, 64), f1=None, f2=None):
         # Call parent Sprite class constructor to initialize sprite functionality
         super().__init__()
 
         # sound and sound information for the frame/point
         # Store reference to Sound object containing audio analysis data for this point
         self.sound = sound
+        # Store smoothed F1 and F2 values so we can recalculate coordinates if log/linear scale changes
+        self.f1 = f1
+        self.f2 = f2
         # Store radius for color changes
         # Save radius value as instance variable (needed later for redraws when changing color)
         self.radius = radius

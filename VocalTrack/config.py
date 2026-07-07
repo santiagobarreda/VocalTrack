@@ -9,6 +9,8 @@ PERFORMANCE_CONFIG = {
 EXPORT_CONFIG = {
     'save_recordings': False,  # Enable/disable saving recordings (off by default)
     'save_wav': True,  # Save audio as WAV (when save_recordings is True)
+    'save_original_audio': True,  # Save the device-rate/original audio stream as WAV
+    'save_downsampled_audio': False,  # Save the analysis-rate/downsampled audio stream as WAV
     'save_csv': True,  # Save timestamped CSV with formants (when save_recordings is True)
     'output_dir': 'recordings',  # Output directory for files
 }
@@ -23,7 +25,7 @@ AUDIO_CONFIG = {
 
 # GUI - LiveVowel
 LIVEVOWEL_CONFIG = {
-    'gui_size': (800.0, 600.0),
+    'gui_size': (900.0, 650.0),
     'f1_range': (200.0, 1200.0),
     'f2_range': (500.0, 2700.0),
     'fps': 60,
@@ -34,8 +36,8 @@ LIVEVOWEL_CONFIG = {
 
 # GUI - LivePitch
 LIVEPITCH_CONFIG = {
-    'gui_width': 850,
-    'gui_height': 500,
+    'gui_width': 1200,
+    'gui_height': 650,
     'min_f0': 75,
     'max_f0': 500,
     'fps': 60,
@@ -48,7 +50,7 @@ LIVEPITCH_CONFIG = {
 # GUI - LiveSpectrogram
 LIVESPECTROGRAM_CONFIG = {
     'gui_width': 1200,  # Display window width in pixels (typical: 1200 for widescreen)
-    'gui_height': 600,  # Display window height in pixels; larger height = finer frequency resolution
+    'gui_height': 650,  # Display window height in pixels; larger height = finer frequency resolution
     'max_freq': 5000,  # Maximum frequency to display in Hz; limits X-axis range (avoids aliasing above 5kHz for 10kHz sample rate)
     'display_seconds': 3.0,  # Time window duration in seconds; controls horizontal scroll speed (5s typical for real-time response)
     'colormap': 'plasma',  # Matplotlib colormap name for magnitude-to-color mapping; 'plasma' is perceptually uniform
@@ -62,7 +64,7 @@ LIVESPECTROGRAM_CONFIG = {
 # GUI - LiveSpectrum
 LIVESPECTRUM_CONFIG = {
     'gui_width': 1200,  # Display window width in pixels
-    'gui_height': 600,  # Display window height in pixels
+    'gui_height': 650,  # Display window height in pixels
     'max_freq': 5000,  # Maximum frequency to display in Hz
     'dynamic_range': 40,  # Dynamic range in dB for amplitude display
     'fps': 60,  # Frame rate for display refresh
@@ -96,6 +98,7 @@ SMOOTHER_CONFIG = {
     'skip_tolerance': 2,  # frames to skip before resetting track
     'hold_unvoiced': True,  # GitHub baseline (was False - broke tracks on voicing drops)
     # 1-Euro filter parameters for adaptive smoothing
+    'use_euro_filter': True,  # Enable/disable 1-Euro temporal smoothing of formants and pitch
     'euro_min_cutoff': 0.05,  # Baseline cutoff frequency (Hz) - lower = smoother
     'euro_beta': 1.5,  # Responsiveness to velocity - higher = more adaptive
     'euro_dcutoff': 0.5,  # Cutoff for velocity smoothing - lower = smoother velocity
@@ -109,3 +112,14 @@ COLORS = {
     'blue': (0, 0, 255),
     'grey': (50, 50, 50),
 }
+
+# Save deep copies of initial/factory defaults for "Defaults" button reversion
+import copy
+FACTORY_AUDIO_CONFIG = copy.deepcopy(AUDIO_CONFIG)
+FACTORY_ANALYSIS_CONFIG = copy.deepcopy(ANALYSIS_CONFIG)
+FACTORY_LIVEVOWEL_CONFIG = copy.deepcopy(LIVEVOWEL_CONFIG)
+FACTORY_LIVEPITCH_CONFIG = copy.deepcopy(LIVEPITCH_CONFIG)
+FACTORY_LIVESPECTROGRAM_CONFIG = copy.deepcopy(LIVESPECTROGRAM_CONFIG)
+FACTORY_LIVESPECTRUM_CONFIG = copy.deepcopy(LIVESPECTRUM_CONFIG)
+FACTORY_SMOOTHER_CONFIG = copy.deepcopy(SMOOTHER_CONFIG)
+FACTORY_EXPORT_CONFIG = copy.deepcopy(EXPORT_CONFIG)

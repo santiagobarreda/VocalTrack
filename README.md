@@ -32,8 +32,8 @@ For a detailed description of the **VocalTrack** architecture and signal process
 
 ### Requirements
 
-- Python 3.7 or higher
-- Microphone/audio input device (head-mounted microphones are require for proper function)
+- Python >=3.9 and <3.15
+- Microphone/audio input device (head-mounted microphones are required for proper function)
 - OS audio permissions enabled
 
 ## Quick Start
@@ -45,9 +45,16 @@ cd VocalTrack
 ```
 Or download from GitHub and unzip into local directory. 
 
-2. Install dependencies:
+2. Install dependencies (we highly recommend doing this inside a virtual environment):
 ```bash
-pip install --upgrade pip setuptools wheel
+# Optional but recommended: Create and activate a virtual environment
+# Windows: python -m venv vocaltrack-env && vocaltrack-env\Scripts\activate
+# macOS/Linux: python3 -m venv vocaltrack-env && source vocaltrack-env/bin/activate
+
+# (Note: If you skip creating a virtual environment on macOS/Linux, you will likely need to use pip3 instead of pip below)
+
+# Upgrade core packaging tools (python -m pip is required on Windows to prevent file-locking crashes)
+python -m pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 ```
 
@@ -82,15 +89,19 @@ Click one of the four launch buttons:
 
 **Common (all modes where implemented):**
 - `ESC`: Quit and save (if applicable)
-- `G`: Toggle grid overlay
-- `H`: Toggle help overlay
+- `Ctrl+G`: Toggle grid overlay
+- `Ctrl+?`: Toggle help overlay
 - `+`/`-`: Adjust threshold/gain/dynamic range
 
+**Note for macOS users:** all `Ctrl+...` shortcuts also support `Cmd+...`.
+
 **LiveVowel:**
-- `Ctrl+V`: Toggle recording state
+- `Ctrl+V`: Toggle IPA vowel picker
+- `Ctrl+R`: Toggle recording state
+- `Ctrl+?`: Toggle help overlay (stops recording when shown, starts when hidden)
 - `Ctrl+T`: Toggle vowel template display
 - `Ctrl+S`: Save currently toggled template labels + frequency positions
-- `L`: Toggle log/linear frequency scale
+- `Ctrl+L`: Toggle log/linear frequency scale
 - `Backspace`: Undo last track (in track mode)
 - `Delete`: Clear all tracks (in track mode)
 
@@ -102,19 +113,26 @@ Click one of the four launch buttons:
 **LiveSpectrogram:**
 - `Ctrl +`/`Ctrl -`: Adjust gain
 
+### Startup Defaults
+
+- Recording starts OFF when launching each mode.
+- Help overlay starts ON for each visualization window.
+
 **LiveSpectrum:**
 - `+`/`-`: Adjust gain offset
 
 ## Data Export
 
-Files are automatically saved to `recordings/` on exit:
+Files are automatically saved to `recordings/` on exit (depending on options enabled in Recording Settings):
 
 **LiveVowel:**
-- `speaker_YYYY-MM-DD_HHMMSS.wav`: Audio recording
+- `speaker_YYYY-MM-DD_HHMMSS_vowel_original.wav`: Original audio recording (device sample rate)
+- `speaker_YYYY-MM-DD_HHMMSS_vowel_downsampled.wav`: Downsampled audio recording (analysis sample rate)
 - `speaker_YYYY-MM-DD_HHMMSS_formants.csv`: Timestamped F1/F2/F3 data (voiced frames only)
 
 **LivePitch:**
-- `speaker_YYYY-MM-DD_HHMMSS_pitch.wav`: Audio recording
+- `speaker_YYYY-MM-DD_HHMMSS_pitch_original.wav`: Original audio recording (device sample rate)
+- `speaker_YYYY-MM-DD_HHMMSS_pitch_downsampled.wav`: Downsampled audio recording (analysis sample rate)
 - `speaker_YYYY-MM-DD_HHMMSS_pitch.csv`: Timestamped f0 data (voiced frames only)
 
 **Note:** LiveSpectrogram and LiveSpectrum are visualization-only modes and do not export CSV files by default.

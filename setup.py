@@ -21,7 +21,7 @@ setup(
         "Operating System :: OS Independent",
         "Topic :: Multimedia :: Sound/Audio :: Analysis",
     ],
-    python_requires=">=3.7",
+    python_requires=">=3.11",
     install_requires=[
         "praat-parselmouth>=0.4.0",
         "pygame-ce>=2.5.0",
@@ -30,7 +30,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "vocaltrack=vocaltrack:main",
+            "vocaltrack=VocalTrack._launcher:main",
         ],
     },
 )

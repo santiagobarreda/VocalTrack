@@ -191,10 +191,6 @@ class VowelTemplate:
         Returns:
             tuple: (plot_x, plot_y) numpy arrays of x and y pixel coordinates for each vowel
         """
-        # Convert F1 and F2 arrays to integer type for display
-        self.f1 = self.f1.astype(int)
-        self.f2 = self.f2.astype(int)
-
         # Calculate log-distance of F2 from minimum F2 in display range
         x_diff = numpy.log(self.f2) - numpy.log(self.gui_info['f2_range'][0])
         # Calculate log-distance of F1 from minimum F1 in display range

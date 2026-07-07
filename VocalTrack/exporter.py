@@ -57,11 +57,11 @@ def save_wav(filename, samples, sample_rate, normalize=True):
 
 def save_formants_csv(filename, formant_data):
     """Save timestamped formant analyses to CSV.
-    
+
     Args:
         filename (str): Output CSV filename
         formant_data (list): List of dicts with keys:
-            'time_ms', 'f0', 'f1', 'f2', 'f3', 'voicing', 'track_number'
+            'time_ms', 'f0', 'f1', 'f1_smoothed', 'f2', 'f2_smoothed', 'f3', 'voicing', 'track_number'
     """
     # Create output directory if it doesn't exist (mkdir -p behavior)
     os.makedirs(os.path.dirname(filename), exist_ok=True)
@@ -78,10 +78,9 @@ def save_formants_csv(filename, formant_data):
     # Open CSV file for writing with UTF-8 encoding
     with open(filename, 'w', newline='', encoding='utf-8') as f:
         # Create CSV dict writer with specified column names
-        writer = csv.DictWriter(f, fieldnames=['time_ms', 'f0', 'f1', 'f2', 'f3', 'voicing', 'track_number'])
+        writer = csv.DictWriter(f, fieldnames=['time_ms', 'f0', 'f1', 'f1_smoothed', 'f2', 'f2_smoothed', 'f3', 'voicing', 'track_number'])
         # Write CSV header row with column names
         writer.writeheader()
-        # Loop through each formant measurement dictionary
         for row in formant_data:
             # Extract f0 value from row dictionary (fixed: was 'f0_hz', should be 'f0')
             f0 = row.get('f0')
@@ -89,8 +88,13 @@ def save_formants_csv(filename, formant_data):
             voicing = row.get('voicing')
             # Only write voiced frames with valid f0 in acceptable range
             if voicing and f0 is not None and min_f0 <= f0 <= max_f0:
+                row_out = row.copy()
+                if 'f1_smoothed' in row_out and row_out['f1_smoothed'] is not None:
+                    row_out['f1_smoothed'] = int(round(row_out['f1_smoothed']))
+                if 'f2_smoothed' in row_out and row_out['f2_smoothed'] is not None:
+                    row_out['f2_smoothed'] = int(round(row_out['f2_smoothed']))
                 # Write row dictionary as CSV line
-                writer.writerow(row)
+                writer.writerow(row_out)
 
 
 def save_pitch_csv(filename, pitch_data, min_f0=None, max_f0=None):
@@ -99,7 +103,7 @@ def save_pitch_csv(filename, pitch_data, min_f0=None, max_f0=None):
     Args:
         filename (str): Output CSV filename
         pitch_data (list): List of dicts with keys:
-            'time_ms', 'f0', 'voicing', optionally 'track'
+            'time_ms', 'f0', 'f0_smoothed', 'voicing', optionally 'track'
     """
     # Create output directory if it doesn't exist (mkdir -p behavior)
     os.makedirs(os.path.dirname(filename), exist_ok=True)
@@ -117,8 +121,8 @@ def save_pitch_csv(filename, pitch_data, min_f0=None, max_f0=None):
         # Get maximum f0 threshold from config (default infinity if not specified)
         max_f0 = config.ANALYSIS_CONFIG.get('max_f0', float('inf'))
 
-    # Determine columns: always include time_ms, f0, voicing; add 'track' if present in any row
-    columns = ['time_ms', 'f0', 'voicing']
+    # Determine columns: always include time_ms, f0, f0_smoothed, voicing; add 'track' if present in any row
+    columns = ['time_ms', 'f0', 'f0_smoothed', 'voicing']
     if any('track' in row for row in pitch_data):
         columns = ['track'] + columns
     with open(filename, 'w', newline='', encoding='utf-8') as f:

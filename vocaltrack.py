@@ -1,5 +1,13 @@
-"""PySide6 launcher for liveaudio applications."""
-# Bring in the tools needed to interact with the computer's operating system (like exiting the program)
+"""Thin shim so 'python vocaltrack.py' still works. Real code lives in VocalTrack/_launcher.py."""
+from VocalTrack._launcher import main
+
+if __name__ == "__main__":
+    main()
+
+# ---------------------------------------------------------------------------
+# Everything below is kept for backward compatibility with any code that
+# imports directly from this file (e.g. 'from vocaltrack import LauncherWindow').
+# ---------------------------------------------------------------------------
 import sys
 import os
 
@@ -592,6 +600,8 @@ class LauncherWindow(QMainWindow):
         
         # If the user changed recording settings...
         if self.recording_settings:
+            self.recording_settings.setdefault('save_original_audio', config.EXPORT_CONFIG.get('save_original_audio', True))
+            self.recording_settings.setdefault('save_downsampled_audio', config.EXPORT_CONFIG.get('save_downsampled_audio', False))
             # Push them into the global brain
             config.EXPORT_CONFIG.update(self.recording_settings)
             # Command the system to memorize them

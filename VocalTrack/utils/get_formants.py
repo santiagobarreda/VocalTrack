@@ -34,6 +34,30 @@ def get_formants(signal, sample_rate, method='native', **kwargs):
         raise ValueError(f"Unknown method: {method}")
     
 
+def _levinson_durbin(r: np.ndarray, order: int) -> tuple:
+    """
+    Solve for LPC coefficients using the Levinson-Durbin recursion.
+    Optimized using vectorized NumPy array operations.
+    """
+    a = np.zeros(order + 1, dtype=np.float64)
+    e = r[0]
+    if e == 0:
+        return a, e
+    a[0] = 1.0
+    for i in range(1, order + 1):
+        # Vectorized accumulation using dot product
+        acc = float(np.dot(a[1:i], r[i-1:0:-1]))
+        k = -(r[i] + acc) / e
+        a_prev = a.copy()
+        a[i] = k
+        # Vectorized update of coefficients
+        a[1:i] = a_prev[1:i] + k * a_prev[i-1:0:-1]
+        e *= (1.0 - k * k)
+        if e <= 0:
+            break
+    return a, e
+
+
 def get_formants_native(signal: np.ndarray,
                   sample_rate: int,
                   max_formant: int = 5000,
@@ -120,33 +144,12 @@ def get_formants_native(signal: np.ndarray,
     autocorr = np.correlate(windowed, windowed, mode='full')
     autocorr = autocorr[autocorr.size // 2:]
 
-    # Levinson-Durbin recursion for LPC coefficients
-    def levinson(r, order):
-        a = np.zeros(order + 1, dtype=np.float64)
-        e = r[0]
-        if e == 0:
-            return a, e
-        a[0] = 1.0
-        for i in range(1, order + 1):
-            acc = 0.0
-            for j in range(1, i):
-                acc += a[j] * r[i - j]
-            k = -(r[i] + acc) / e
-            a_prev = a.copy()
-            a[i] = k
-            for j in range(1, i):
-                a[j] = a_prev[j] + k * a_prev[i - j]
-            e *= (1.0 - k * k)
-            if e <= 0:
-                break
-        return a, e
-
     # Check if we have enough autocorrelation values for the requested order
     if autocorr.size < order + 1:
         return {'formants': np.zeros(3), 'bandwidths': np.zeros(3), 'method': 'native'}
 
     # Solve for LPC coefficients using Levinson-Durbin algorithm
-    a, e = levinson(autocorr, order)
+    a, e = _levinson_durbin(autocorr, order)
 
     # Find roots of LPC polynomial (poles of vocal tract filter)
     roots = np.roots(a)

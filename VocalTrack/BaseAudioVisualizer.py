@@ -72,7 +72,7 @@ class BaseAudioVisualizer:
         
         # Create switches for universal visual settings (Grid and Help menu)
         self.show_grid = True
-        self.show_help = False
+        self.show_help = True
         # Look in the settings to see if the user wants Logarithmic or Linear spacing
         self.freq_scale = self.config.get('freq_scale', 'log')
         
@@ -96,6 +96,9 @@ class BaseAudioVisualizer:
         # Log that the base setup was successful
         logger.debug(f"BaseAudioVisualizer initialized: {app_title}")
 
+        # Initialize default fonts to avoid recreating them on every frame (heavy OS lookup)
+        self.default_font_28 = pygame.font.SysFont(None, 28)
+
     def handle_base_events(self, event_holder):
         """Translates keyboard presses that do the exact same thing in every visualizer.
         
@@ -105,16 +108,16 @@ class BaseAudioVisualizer:
         Returns:
             bool: False if the user asked to quit, True if the program should keep going.
         """
-        # If the user presses the 'G' key...
-        if event_holder.g_key:
+        # If the user presses Ctrl+G...
+        if event_holder.ctrl_g:
             # Flip the grid switch (turn it on if it's off, or off if it's on)
             self.show_grid = not self.show_grid
             # Log the change
             grid_status = "ON" if self.show_grid else "OFF"
             logger.debug(f"Grid toggled {grid_status}")
         
-        # If the user presses the 'H' key...
-        if event_holder.h_key:
+        # If the user presses Ctrl+?...
+        if event_holder.ctrl_h:
             # Flip the help menu switch
             self.show_help = not self.show_help
             # Log the change
@@ -214,8 +217,8 @@ class BaseAudioVisualizer:
         
         # If we have text to show, AND the 1-second timer hasn't run out yet...
         if self.min_rms_display_text and current_time < self.min_rms_display_until:
-            # Create a font that is large enough to read easily
-            font = pygame.font.SysFont(None, 28)
+            # Use cached font to avoid expensive OS lookups
+            font = self.default_font_28
             # Create an image of the text colored black
             text_surface = font.render(self.min_rms_display_text, True, (0, 0, 0))
             # Get the exact mathematical dimensions of that text image

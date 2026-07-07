@@ -2,7 +2,9 @@
 .VocalTrack_settings.json
 *.json
 /.venv311-test
-/recordings
 /VocalTrack.egg-info
 /VocalTrack/utils
 /__pycache__
+/VocalTrack.egg-info
+/__pycache__
+/recordings

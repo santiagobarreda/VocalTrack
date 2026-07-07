@@ -8,6 +8,20 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QHBoxLayout, 
     QPushButton, QLineEdit, QComboBox, QLabel, QCheckBox
 )
+from PySide6.QtGui import QIntValidator, QDoubleValidator
+
+# Helper functions for safe type conversion
+def safe_int(text, default=0):
+    try:
+        return int(text)
+    except ValueError:
+        return default
+
+def safe_float(text, default=0.0):
+    try:
+        return float(text)
+    except ValueError:
+        return default
 
 # Bring in the default settings from the main application
 from VocalTrack import config
@@ -37,24 +51,34 @@ class BaseSettingsDialog(QDialog):
         # Put the empty form into our vertical stack
         self.main_layout.addLayout(self.form)
         
-        # Standard OK/Cancel Buttons
+        # Standard OK/Cancel/Defaults Buttons
         # Create a horizontal row layout to hold buttons side-by-side
         self.btn_layout = QHBoxLayout()
         # Create the OK button
         self.ok_btn = QPushButton("OK")
         # Create the Cancel button
         self.cancel_btn = QPushButton("Cancel")
+        # Create the Defaults button
+        self.defaults_btn = QPushButton("Defaults")
         # If the user clicks OK, tell the window to close and say it was successful
         self.ok_btn.clicked.connect(self.accept)
         # If the user clicks Cancel, tell the window to close and reject changes
         self.cancel_btn.clicked.connect(self.reject)
+        # If the user clicks Defaults, revert all fields to factory defaults
+        self.defaults_btn.clicked.connect(self.load_defaults)
         # Put the OK button into the horizontal row
         self.btn_layout.addWidget(self.ok_btn)
         # Put the Cancel button into the horizontal row next to it
         self.btn_layout.addWidget(self.cancel_btn)
+        # Put the Defaults button into the horizontal row next to it
+        self.btn_layout.addWidget(self.defaults_btn)
         
         # Put the horizontal row of buttons at the very bottom of the vertical stack
         self.main_layout.addLayout(self.btn_layout)
+
+    def load_defaults(self):
+        """Reset inputs to factory default values. Subclasses should override this."""
+        pass
 
 
 class AnalysisSettingsDialog(BaseSettingsDialog):
@@ -154,31 +178,57 @@ class AnalysisSettingsDialog(BaseSettingsDialog):
         # Add the pitch dropdown to the form
         self.form.addRow("Pitch Method:", self.pitch_method_combo)
         
+        # Apply validators to restrict user input to valid ranges/types
+        self.chunk_input.setValidator(QIntValidator(1, 1000, self))
+        self.chunks_input.setValidator(QIntValidator(1, 100, self))
+        self.max_formant_input.setValidator(QIntValidator(1000, 20000, self))
+        self.n_formants_input.setValidator(QDoubleValidator(1.0, 20.0, 2, self))
+        self.min_f0_input.setValidator(QIntValidator(10, 1000, self))
+        self.max_f0_input.setValidator(QIntValidator(50, 2000, self))
+        self.min_confidence_input.setValidator(QDoubleValidator(0.0, 1.0, 4, self))
+        self.min_rms_input.setValidator(QDoubleValidator(-120.0, 0.0, 2, self))
+        
     def get_settings(self):
         """Gathers everything the user typed, packages it, and sends it back to the main app."""
         # Return a dictionary (a labeled list of items)
         return {
-            # Read the text box, convert it to a whole number (int), and label it 'chunk_ms'
-            'chunk_ms': int(self.chunk_input.text()),
+            # Read the text box, convert it safely to an int
+            'chunk_ms': safe_int(self.chunk_input.text(), 5),
             # Read the text box, convert to whole number
-            'number_of_chunks': int(self.chunks_input.text()),
+            'number_of_chunks': safe_int(self.chunks_input.text(), 5),
             # Read the text box, convert to whole number
-            'max_formant': int(self.max_formant_input.text()),
+            'max_formant': safe_int(self.max_formant_input.text(), 5000),
             # Read the text box, convert to a decimal number (float)
-            'n_formants': float(self.n_formants_input.text()),
+            'n_formants': safe_float(self.n_formants_input.text(), 5.5),
             # Read the text box, convert to whole number
-            'min_f0': int(self.min_f0_input.text()),
+            'min_f0': safe_int(self.min_f0_input.text(), 60),
             # Read the text box, convert to whole number
-            'max_f0': int(self.max_f0_input.text()),
+            'max_f0': safe_int(self.max_f0_input.text(), 300),
             # Read the text box, convert to decimal number
-            'min_confidence': float(self.min_confidence_input.text()),
+            'min_confidence': safe_float(self.min_confidence_input.text(), 0.2),
             # Read the text box, convert to decimal number
-            'min_rms_db': float(self.min_rms_input.text()),
+            'min_rms_db': safe_float(self.min_rms_input.text(), -45.0),
             # Read the currently selected text from the formant dropdown menu
             'formant_method': self.formant_method_combo.currentText(),
             # Read the currently selected text from the pitch dropdown menu
             'pitch_method': self.pitch_method_combo.currentText(),
         }
+
+    def load_defaults(self):
+        self.chunk_input.setText(str(config.FACTORY_AUDIO_CONFIG['chunk_ms']))
+        self.chunks_input.setText(str(config.FACTORY_AUDIO_CONFIG['number_of_chunks']))
+        self.max_formant_input.setText(str(config.FACTORY_ANALYSIS_CONFIG['max_formant']))
+        self.n_formants_input.setText(str(config.FACTORY_ANALYSIS_CONFIG['n_formants']))
+        self.min_f0_input.setText(str(config.FACTORY_ANALYSIS_CONFIG['min_f0']))
+        self.max_f0_input.setText(str(config.FACTORY_ANALYSIS_CONFIG['max_f0']))
+        self.min_confidence_input.setText(str(config.FACTORY_ANALYSIS_CONFIG['min_confidence']))
+        self.min_rms_input.setText(str(config.FACTORY_AUDIO_CONFIG['min_rms_db']))
+        
+        idx1 = self.formant_method_combo.findText(config.FACTORY_ANALYSIS_CONFIG['formant_method'])
+        if idx1 >= 0: self.formant_method_combo.setCurrentIndex(idx1)
+        
+        idx2 = self.pitch_method_combo.findText(config.FACTORY_ANALYSIS_CONFIG['pitch_method'])
+        if idx2 >= 0: self.pitch_method_combo.setCurrentIndex(idx2)
 
 
 class SmootherSettingsDialog(BaseSettingsDialog):
@@ -194,7 +244,7 @@ class SmootherSettingsDialog(BaseSettingsDialog):
         # Create a text box for memory size (how many past dots it remembers)
         self.memory_input = QLineEdit(str(saved.get('memory_n', config.SMOOTHER_CONFIG.get('memory_n', 5))))
         # Add it to the form
-        self.form.addRow("Memory (frames):", self.memory_input)
+        self.form.addRow("Memory frames (1=no memory)", self.memory_input)
         
         # Create a text box for stability (how far a dot can jump before we consider it an error)
         self.stability_input = QLineEdit(str(saved.get('stability_threshold', config.SMOOTHER_CONFIG.get('stability_threshold', 0.32))))
@@ -212,14 +262,20 @@ class SmootherSettingsDialog(BaseSettingsDialog):
         separator.setStyleSheet("color: gray;")
         # Add the dividing line to the form
         self.form.addRow(separator)
-        
+
+        # Checkbox to enable/disable 1-Euro temporal smoothing
+        euro_enabled = saved.get('use_euro_filter', config.SMOOTHER_CONFIG.get('use_euro_filter', True))
+        self.use_euro_filter_checkbox = QCheckBox()
+        self.use_euro_filter_checkbox.setChecked(bool(euro_enabled))
+        self.form.addRow("Enable 1-Euro filter:", self.use_euro_filter_checkbox)
+
         # Create a bold text label to introduce the 1-Euro math filter section
         euro_label = QLabel("1-Euro Filter Parameters:")
         # Make it bold
         euro_label.setStyleSheet("font-weight: bold;")
         # Add the header to the form
         self.form.addRow(euro_label)
-        
+
         # Text box for minimum cutoff (how much it smooths when the voice is steady)
         self.euro_min_cutoff_input = QLineEdit(str(saved.get('euro_min_cutoff', config.SMOOTHER_CONFIG.get('euro_min_cutoff', 0.05))))
         # Add to form
@@ -240,24 +296,37 @@ class SmootherSettingsDialog(BaseSettingsDialog):
         # Add to form
         self.form.addRow("Velocity Power:", self.velocity_power_input)
         
+        # Apply input validators
+        self.memory_input.setValidator(QIntValidator(1, 1000, self))
+        self.stability_input.setValidator(QDoubleValidator(0.0, 100.0, 4, self))
+        self.skip_input.setValidator(QIntValidator(0, 1000, self))
+        self.euro_min_cutoff_input.setValidator(QDoubleValidator(0.0, 100.0, 4, self))
+        self.euro_beta_input.setValidator(QDoubleValidator(0.0, 100.0, 4, self))
+        self.euro_dcutoff_input.setValidator(QDoubleValidator(0.0, 100.0, 4, self))
+        self.velocity_power_input.setValidator(QDoubleValidator(0.0, 100.0, 4, self))
+        
     def get_settings(self):
         """Gathers the smoother settings and packages them up."""
         return {
-            # Convert memory to a whole number
-            'memory_n': int(self.memory_input.text()),
-            # Convert stability to a decimal number
-            'stability_threshold': float(self.stability_input.text()),
-            # Convert skip tolerance to a whole number
-            'skip_tolerance': int(self.skip_input.text()),
-            # Convert math parameter to decimal
-            'euro_min_cutoff': float(self.euro_min_cutoff_input.text()),
-            # Convert math parameter to decimal
-            'euro_beta': float(self.euro_beta_input.text()),
-            # Convert math parameter to decimal
-            'euro_dcutoff': float(self.euro_dcutoff_input.text()),
-            # Convert math parameter to decimal
-            'velocity_power': float(self.velocity_power_input.text()),
+            'memory_n': safe_int(self.memory_input.text(), 5),
+            'stability_threshold': safe_float(self.stability_input.text(), 0.32),
+            'skip_tolerance': safe_int(self.skip_input.text(), 2),
+            'use_euro_filter': self.use_euro_filter_checkbox.isChecked(),
+            'euro_min_cutoff': safe_float(self.euro_min_cutoff_input.text(), 0.05),
+            'euro_beta': safe_float(self.euro_beta_input.text(), 1.5),
+            'euro_dcutoff': safe_float(self.euro_dcutoff_input.text(), 0.5),
+            'velocity_power': safe_float(self.velocity_power_input.text(), 1.5),
         }
+
+    def load_defaults(self):
+        self.memory_input.setText(str(config.FACTORY_SMOOTHER_CONFIG['memory_n']))
+        self.stability_input.setText(str(config.FACTORY_SMOOTHER_CONFIG['stability_threshold']))
+        self.skip_input.setText(str(config.FACTORY_SMOOTHER_CONFIG['skip_tolerance']))
+        self.use_euro_filter_checkbox.setChecked(bool(config.FACTORY_SMOOTHER_CONFIG['use_euro_filter']))
+        self.euro_min_cutoff_input.setText(str(config.FACTORY_SMOOTHER_CONFIG['euro_min_cutoff']))
+        self.euro_beta_input.setText(str(config.FACTORY_SMOOTHER_CONFIG['euro_beta']))
+        self.euro_dcutoff_input.setText(str(config.FACTORY_SMOOTHER_CONFIG['euro_dcutoff']))
+        self.velocity_power_input.setText(str(config.FACTORY_SMOOTHER_CONFIG['velocity_power']))
 
 
 
@@ -323,6 +392,13 @@ class PlottingSettingsDialog(BaseSettingsDialog):
         # Add dropdown to form
         self.form.addRow("Frequency Scale:", self.freq_scale_combo)
         
+        # Apply input validators
+        self.f1_min_input.setValidator(QDoubleValidator(0.0, 10000.0, 2, self))
+        self.f1_max_input.setValidator(QDoubleValidator(0.0, 10000.0, 2, self))
+        self.f2_min_input.setValidator(QDoubleValidator(0.0, 20000.0, 2, self))
+        self.f2_max_input.setValidator(QDoubleValidator(0.0, 20000.0, 2, self))
+        self.fps_input.setValidator(QIntValidator(1, 240, self))
+        
     def get_settings(self):
         """Gathers settings and translates dropdown choices back into code words."""
         # Create a list of the code words for display modes
@@ -331,16 +407,32 @@ class PlottingSettingsDialog(BaseSettingsDialog):
         scales = ["log", "linear"]
         return {
             # Package the two F1 text boxes together as a pair (tuple) of decimal numbers
-            'f1_range': (float(self.f1_min_input.text()), float(self.f1_max_input.text())),
+            'f1_range': (safe_float(self.f1_min_input.text(), 200.0), safe_float(self.f1_max_input.text(), 1100.0)),
             # Package the two F2 text boxes together as a pair
-            'f2_range': (float(self.f2_min_input.text()), float(self.f2_max_input.text())),
+            'f2_range': (safe_float(self.f2_min_input.text(), 500.0), safe_float(self.f2_max_input.text(), 2700.0)),
             # Convert FPS to a whole number
-            'fps': int(self.fps_input.text()),
+            'fps': safe_int(self.fps_input.text(), 60),
             # Look up the code word based on which dropdown item the user clicked
             'display_mode': modes[self.display_mode_combo.currentIndex()],
             # Look up the scale code word based on the dropdown
             'freq_scale': scales[self.freq_scale_combo.currentIndex()],
         }
+
+    def load_defaults(self):
+        f1_range = config.FACTORY_LIVEVOWEL_CONFIG['f1_range']
+        f2_range = config.FACTORY_LIVEVOWEL_CONFIG['f2_range']
+        self.f1_min_input.setText(str(int(f1_range[0])))
+        self.f1_max_input.setText(str(int(f1_range[1])))
+        self.f2_min_input.setText(str(int(f2_range[0])))
+        self.f2_max_input.setText(str(int(f2_range[1])))
+        self.fps_input.setText(str(config.FACTORY_LIVEVOWEL_CONFIG['fps']))
+        
+        mode_map = {"single": 0, "track": 1, "all": 2}
+        idx1 = mode_map.get(config.FACTORY_LIVEVOWEL_CONFIG['display_mode'], 0)
+        self.display_mode_combo.setCurrentIndex(idx1)
+        
+        idx2 = 0 if config.FACTORY_LIVEVOWEL_CONFIG['freq_scale'] == 'log' else 1
+        self.freq_scale_combo.setCurrentIndex(idx2)
 
 
 
@@ -391,22 +483,39 @@ class PitchPlotSettingsDialog(BaseSettingsDialog):
         # Add dropdown to form
         self.form.addRow("Frequency Scale:", self.freq_scale_combo)
         
+        # Apply input validators
+        self.min_f0_input.setValidator(QIntValidator(10, 1000, self))
+        self.max_f0_input.setValidator(QIntValidator(20, 3000, self))
+        self.window_width_input.setValidator(QDoubleValidator(0.1, 100.0, 2, self))
+        
     def get_settings(self):
         """Gathers settings and translates dropdown choices."""
         # List of scale code words
         scales = ["log", "linear"]
         return {
             # Convert min pitch to whole number
-            'min_f0': int(self.min_f0_input.text()),
+            'min_f0': safe_int(self.min_f0_input.text(), 75),
             # Convert max pitch to whole number
-            'max_f0': int(self.max_f0_input.text()),
+            'max_f0': safe_int(self.max_f0_input.text(), 500),
             # A tiny inline logic statement: if dropdown is 0, use "fixed", otherwise use "continuous"
             'pitch_plot_mode': "fixed" if self.mode_combo.currentIndex() == 0 else "continuous",
             # Convert seconds to a decimal number
-            'pitch_display_seconds': float(self.window_width_input.text()),
+            'pitch_display_seconds': safe_float(self.window_width_input.text(), 5.0),
             # Look up the scale code word based on dropdown index
             'freq_scale': scales[self.freq_scale_combo.currentIndex()],
         }
+
+    def load_defaults(self):
+        self.min_f0_input.setText(str(config.FACTORY_LIVEPITCH_CONFIG['min_f0']))
+        self.max_f0_input.setText(str(config.FACTORY_LIVEPITCH_CONFIG['max_f0']))
+        
+        idx1 = 0 if config.FACTORY_LIVEPITCH_CONFIG['pitch_plot_mode'] == 'fixed' else 1
+        self.mode_combo.setCurrentIndex(idx1)
+        
+        self.window_width_input.setText(str(config.FACTORY_LIVEPITCH_CONFIG['pitch_display_seconds']))
+        
+        idx2 = 0 if config.FACTORY_LIVEPITCH_CONFIG['freq_scale'] == 'log' else 1
+        self.freq_scale_combo.setCurrentIndex(idx2)
 
 
 
@@ -468,26 +577,48 @@ class SpectrogramSettingsDialog(BaseSettingsDialog):
         # Add to form
         self.form.addRow("Padding Length (ms):", self.padding_length_input)
         
+        # Apply input validators
+        self.max_freq_input.setValidator(QIntValidator(1000, 48000, self))
+        self.display_seconds_input.setValidator(QDoubleValidator(0.1, 100.0, 2, self))
+        self.fps_input.setValidator(QIntValidator(1, 240, self))
+        self.dynamic_range_input.setValidator(QIntValidator(10, 150, self))
+        self.chunk_ms_input.setValidator(QDoubleValidator(0.1, 1000.0, 2, self))
+        self.number_of_chunks_input.setValidator(QIntValidator(1, 100, self))
+        self.padding_length_input.setValidator(QDoubleValidator(0.0, 1000.0, 2, self))
+        
     def get_settings(self):
         """Gathers settings for the spectrogram."""
         return {
             # Convert max frequency to whole number
-            'max_freq': int(self.max_freq_input.text()),
+            'max_freq': safe_int(self.max_freq_input.text(), 5000),
             # Convert display width to decimal number
-            'display_seconds': float(self.display_seconds_input.text()),
+            'display_seconds': safe_float(self.display_seconds_input.text(), 1.0),
             # Convert FPS to whole number
-            'fps': int(self.fps_input.text()),
+            'fps': safe_int(self.fps_input.text(), 60),
             # For the color map, just grab the actual text string directly
             'colormap': self.colormap_combo.currentText(),
             # Convert contrast number to whole number
-            'dynamic_range': int(self.dynamic_range_input.text()),
+            'dynamic_range': safe_int(self.dynamic_range_input.text(), 40),
             # Convert chunk size to decimal
-            'chunk_ms': float(self.chunk_ms_input.text()),
+            'chunk_ms': safe_float(self.chunk_ms_input.text(), 15.0),
             # Convert chunk count to whole number
-            'number_of_chunks': int(self.number_of_chunks_input.text()),
+            'number_of_chunks': safe_int(self.number_of_chunks_input.text(), 3),
             # Convert padding to decimal
-            'padding_length_ms': float(self.padding_length_input.text()),
+            'padding_length_ms': safe_float(self.padding_length_input.text(), 20.0),
         }
+
+    def load_defaults(self):
+        self.max_freq_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['max_freq']))
+        self.display_seconds_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['display_seconds']))
+        self.fps_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['fps']))
+        
+        idx = self.colormap_combo.findText(config.FACTORY_LIVESPECTROGRAM_CONFIG['colormap'])
+        if idx >= 0: self.colormap_combo.setCurrentIndex(idx)
+        
+        self.dynamic_range_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['dynamic_range']))
+        self.chunk_ms_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['chunk_ms']))
+        self.number_of_chunks_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['number_of_chunks']))
+        self.padding_length_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['padding_length_ms']))
 
 
 
@@ -536,24 +667,42 @@ class SpectrumSettingsDialog(BaseSettingsDialog):
         # Add to form
         self.form.addRow("Smoothing (0-1):", self.smoothing_input)
         
+        # Apply input validators
+        self.max_freq_input.setValidator(QIntValidator(1000, 48000, self))
+        self.dynamic_range_input.setValidator(QIntValidator(10, 150, self))
+        self.chunk_ms_input.setValidator(QDoubleValidator(0.1, 1000.0, 2, self))
+        self.number_of_chunks_input.setValidator(QIntValidator(1, 100, self))
+        self.fps_input.setValidator(QIntValidator(1, 240, self))
+        self.padding_length_input.setValidator(QDoubleValidator(0.0, 1000.0, 2, self))
+        self.smoothing_input.setValidator(QDoubleValidator(0.0, 1.0, 4, self))
+        
     def get_settings(self):
         """Gathers settings for the spectrum line graph."""
         return {
             # Convert max freq to whole number
-            'max_freq': int(self.max_freq_input.text()),
+            'max_freq': safe_int(self.max_freq_input.text(), 5000),
             # Convert dynamic range to whole number
-            'dynamic_range': int(self.dynamic_range_input.text()),
+            'dynamic_range': safe_int(self.dynamic_range_input.text(), 40),
             # Convert chunk size to decimal
-            'chunk_ms': float(self.chunk_ms_input.text()),
+            'chunk_ms': safe_float(self.chunk_ms_input.text(), 15.0),
             # Convert chunk count to whole number
-            'number_of_chunks': int(self.number_of_chunks_input.text()),
+            'number_of_chunks': safe_int(self.number_of_chunks_input.text(), 3),
             # Convert FPS to whole number
-            'fps': int(self.fps_input.text()),
+            'fps': safe_int(self.fps_input.text(), 60),
             # Convert padding size to decimal
-            'padding_length_ms': float(self.padding_length_input.text()),
+            'padding_length_ms': safe_float(self.padding_length_input.text(), 20.0),
             # Convert line smoothing value to decimal
-            'smoothing': float(self.smoothing_input.text()),
+            'smoothing': safe_float(self.smoothing_input.text(), 0.7),
         }
+
+    def load_defaults(self):
+        self.max_freq_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['max_freq']))
+        self.dynamic_range_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['dynamic_range']))
+        self.chunk_ms_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['chunk_ms']))
+        self.number_of_chunks_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['number_of_chunks']))
+        self.fps_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['fps']))
+        self.padding_length_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['padding_length_ms']))
+        self.smoothing_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['smoothing']))
 
 
 
@@ -603,9 +752,21 @@ class RecordingSettingsDialog(BaseSettingsDialog):
         self.save_recordings_checkbox.setChecked(is_checked)
         # Add the checkbox to the form
         self.form.addRow("", self.save_recordings_checkbox)
+
+        self.save_original_audio_checkbox = QCheckBox("Save original audio stream (device rate WAV)")
+        self.save_original_audio_checkbox.setChecked(
+            saved.get('save_original_audio', config.EXPORT_CONFIG.get('save_original_audio', True))
+        )
+        self.form.addRow("", self.save_original_audio_checkbox)
+
+        self.save_downsampled_audio_checkbox = QCheckBox("Save downsampled audio stream (analysis rate WAV)")
+        self.save_downsampled_audio_checkbox.setChecked(
+            saved.get('save_downsampled_audio', config.EXPORT_CONFIG.get('save_downsampled_audio', False))
+        )
+        self.form.addRow("", self.save_downsampled_audio_checkbox)
         
         # Create a small text label to help the user understand what to do
-        info_label = QLabel("Select your microphone or audio input device. Enable 'Save recordings' to export audio and data from LivePitch and LiveVowel modes.")
+        info_label = QLabel("Select your microphone or audio input device. Enable recording export to save CSV data plus either or both WAV streams from LivePitch and LiveVowel.")
         # Color the text gray and make it small
         info_label.setStyleSheet("color: gray; font-size: 11px;")
         # Allow the text to wrap to a new line if the window gets too small
@@ -625,5 +786,19 @@ class RecordingSettingsDialog(BaseSettingsDialog):
     def get_settings(self):
         """Gathers the recording settings and packages them for the main app."""
         return {
-            'save_recordings': self.save_recordings_checkbox.isChecked()
+            'save_recordings': self.save_recordings_checkbox.isChecked(),
+            'save_original_audio': self.save_original_audio_checkbox.isChecked(),
+            'save_downsampled_audio': self.save_downsampled_audio_checkbox.isChecked(),
         }
+
+    def load_defaults(self):
+        self.save_recordings_checkbox.setChecked(bool(config.FACTORY_EXPORT_CONFIG['save_recordings']))
+        self.save_original_audio_checkbox.setChecked(bool(config.FACTORY_EXPORT_CONFIG['save_original_audio']))
+        self.save_downsampled_audio_checkbox.setChecked(bool(config.FACTORY_EXPORT_CONFIG['save_downsampled_audio']))
+        
+        # Reset microphone to the default device index
+        if self.device_combo.isEnabled():
+            for idx in range(self.device_combo.count()):
+                if '[DEFAULT]' in self.device_combo.itemText(idx):
+                    self.device_combo.setCurrentIndex(idx)
+                    break

@@ -40,14 +40,17 @@ class EventHolder:
         self.minus_underscore = None  # Minus/underscore pressed (decrease threshold)
         self.ctrl_plus = None         # Ctrl+Plus pressed (increase gain)
         self.ctrl_minus = None        # Ctrl+Minus pressed (decrease gain)
-        self.ctrl_h = None            # Ctrl+H pressed (toggle help overlay)
+        self.ctrl_h = None            # Ctrl+? pressed (toggle help overlay)
         self.ctrl_s = None            # Ctrl+S pressed (save current IPA template)
-        self.g_key = None             # G pressed (toggle grid)
-        self.h_key = None             # H pressed (toggle help)
+        self.ctrl_g = None            # Ctrl+G pressed (toggle grid)
+        self.ctrl_l = None            # Ctrl+L pressed (toggle log/linear frequency scale)
         self.ctrl_t = None            # Ctrl+T pressed (toggle template vowels)
+        self.ctrl_r = None            # Ctrl+R pressed (toggle recording)
         self.space_down = None        # Space pressed (start recording)
         self.space_up = None          # Space released (stop recording)
-        self.l_key = None             # L pressed (toggle log/linear frequency scale)
+
+        # Treat Ctrl and Command (Meta) as equivalent for cross-platform shortcuts.
+        modifier_mask = pygame.KMOD_CTRL | pygame.KMOD_META
 
         # Parse all events and set attributes for relevant ones
         for event in self.events:
@@ -87,24 +90,33 @@ class EventHolder:
                 self.resize = event
             elif event.type == pygame.KEYDOWN:
                 # Keyboard key pressed
-                if event.mod & pygame.KMOD_CTRL and event.key == pygame.K_v:
+                if event.mod & modifier_mask and event.key == pygame.K_v:
                     # Ctrl+V pressed - toggle between menu and recording mode
                     self.ctrl_v = event
-                elif event.mod & pygame.KMOD_CTRL and event.key == pygame.K_t:
+                elif event.mod & modifier_mask and event.key == pygame.K_t:
                     # Ctrl+T pressed - toggle vowel template
                     self.ctrl_t = event
-                elif event.mod & pygame.KMOD_CTRL and event.key in (pygame.K_EQUALS, pygame.K_PLUS, pygame.K_KP_PLUS):
+                elif event.mod & modifier_mask and event.key in (pygame.K_EQUALS, pygame.K_PLUS, pygame.K_KP_PLUS):
                     # Ctrl+Plus pressed - increase gain
                     self.ctrl_plus = event
-                elif event.mod & pygame.KMOD_CTRL and event.key in (pygame.K_MINUS, pygame.K_UNDERSCORE, pygame.K_KP_MINUS):
+                elif event.mod & modifier_mask and event.key in (pygame.K_MINUS, pygame.K_UNDERSCORE, pygame.K_KP_MINUS):
                     # Ctrl+Minus pressed - decrease gain
                     self.ctrl_minus = event
-                elif event.mod & pygame.KMOD_CTRL and event.key == pygame.K_h:
-                    # Ctrl+H pressed - toggle help overlay
+                elif event.mod & modifier_mask and (event.key in (pygame.K_QUESTION, pygame.K_SLASH) or getattr(event, 'unicode', '') == '?'):
+                    # Ctrl+? pressed - toggle help overlay
                     self.ctrl_h = event
-                elif event.mod & pygame.KMOD_CTRL and event.key == pygame.K_s:
+                elif event.mod & modifier_mask and event.key == pygame.K_s:
                     # Ctrl+S pressed - save current IPA template
                     self.ctrl_s = event
+                elif event.mod & modifier_mask and event.key == pygame.K_g:
+                    # Ctrl+G pressed - toggle grid
+                    self.ctrl_g = event
+                elif event.mod & modifier_mask and event.key == pygame.K_l:
+                    # Ctrl+L pressed - toggle log/linear frequency scale
+                    self.ctrl_l = event
+                elif event.mod & modifier_mask and event.key == pygame.K_r:
+                    # Ctrl+R pressed - toggle recording
+                    self.ctrl_r = event
                 elif event.key == pygame.K_BACKSPACE:
                     # Backspace pressed (undo last track)
                     self.backspace = event
@@ -120,15 +132,6 @@ class EventHolder:
                 elif event.key in (pygame.K_MINUS, pygame.K_UNDERSCORE, pygame.K_KP_MINUS):
                     # Minus/underscore pressed (decrease threshold)
                     self.minus_underscore = event
-                elif event.key == pygame.K_g:
-                    # G pressed (toggle grid)
-                    self.g_key = event
-                elif event.key == pygame.K_h:
-                    # H pressed (toggle help)
-                    self.h_key = event
-                elif event.key == pygame.K_l:
-                    # L pressed (toggle log/linear frequency scale)
-                    self.l_key = event
                 elif event.key == pygame.K_SPACE:
                     # Space pressed (start recording)
                     self.space_down = event

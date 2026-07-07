@@ -136,6 +136,10 @@ class LiveSpectrum(BaseAudioVisualizer):
         self.sounds_processed_this_frame = 0  # Number of sounds processed this frame
         self.gain_offset_db = 0.0  # Gain offset in dB (adjustable with +/-)
 
+        # Initialize default fonts to avoid recreating them on every frame (heavy OS lookup)
+        self.font_14 = pygame.font.SysFont('Arial', 14)
+        self.font_18_bold = pygame.font.SysFont('Arial', 18, bold=True)
+
         # Start the main event loop (blocking)
         self.run()
 
@@ -283,29 +287,25 @@ class LiveSpectrum(BaseAudioVisualizer):
         y_axis_max = 0.0  # 0 dB at top
         y_axis_min = -float(self.dynamic_range)  # -dynamic_range dB at bottom
         
-        # Convert spectrum coordinates to screen pixel coordinates
-        points = []
-        for freq, mag_db in zip(freq_subset, spectrum_with_gain):
-            # Normalize frequency from 0-max_freq to 0-1
-            freq_normalized = float(freq) / float(self.max_freq)
-            # Convert to pixel X position
-            x_pixel = float(left_margin) + freq_normalized * float(plot_width)
-            
-            # Map magnitude dB from y_axis_min to y_axis_max range to 0-1
-            # Clamp to display range (values above 0 dB are clipped, below floor fade out)
-            mag_clamped = np.clip(float(mag_db), y_axis_min, y_axis_max)
-            # Normalize: 0 dB maps to 1.0, -dynamic_range dB maps to 0.0
-            mag_normalized = (mag_clamped - y_axis_min) / (y_axis_max - y_axis_min)
-            # Convert to pixel Y position (invert because Y increases downward)
-            y_pixel = float(screen_height) - float(bottom_margin) - mag_normalized * float(plot_height)
-            
-            # Convert to Python int for pygame (handles numpy types)
-            points.append((int(x_pixel), int(y_pixel)))
+        # Convert spectrum coordinates to screen pixel coordinates using fast vectorized numpy operations
+        freq_normalized = freq_subset.astype(np.float64) / float(self.max_freq)
+        x_pixels = (float(left_margin) + freq_normalized * float(plot_width)).astype(np.int32)
         
-            # Draw the continuous spectrum line in a single C-level call
-            if points and len(points) > 1:
-                # Arguments: surface, color, closed (False = don't connect end to start), points list, width
-                pygame.draw.lines(self.screen, (0, 150, 255), False, points, 4)
+        # Map magnitude dB from y_axis_min to y_axis_max range to 0-1
+        # Clamp to display range (values above 0 dB are clipped, below floor fade out)
+        mag_clamped = np.clip(spectrum_with_gain.astype(np.float64), y_axis_min, y_axis_max)
+        # Normalize: 0 dB maps to 1.0, -dynamic_range dB maps to 0.0
+        mag_normalized = (mag_clamped - y_axis_min) / (y_axis_max - y_axis_min)
+        # Convert to pixel Y position (invert because Y increases downward)
+        y_pixels = (float(screen_height) - float(bottom_margin) - mag_normalized * float(plot_height)).astype(np.int32)
+        
+        # Zip coordinates into list of tuples for pygame
+        points = list(zip(x_pixels.tolist(), y_pixels.tolist()))
+        
+        # Draw the continuous spectrum line in a single C-level call
+        if points and len(points) > 1:
+            # Arguments: surface, color, closed (False = don't connect end to start), points list, width
+            pygame.draw.lines(self.screen, (0, 150, 255), False, points, 4)
                 
         # Draw axes
         # Left axis (Y-axis for magnitude)
@@ -319,7 +319,7 @@ class LiveSpectrum(BaseAudioVisualizer):
                          (screen_width - right_margin, screen_height - bottom_margin), 2)
 
         # Draw frequency axis labels
-        font = pygame.font.SysFont('Arial', 14)
+        font = self.font_14
         freq_labels = [0, self.max_freq // 4, self.max_freq // 2, 3 * self.max_freq // 4, self.max_freq]
         for freq in freq_labels:
             x_pixel = left_margin + (freq / self.max_freq) * plot_width
@@ -339,7 +339,7 @@ class LiveSpectrum(BaseAudioVisualizer):
             self.screen.blit(label_text, text_rect)
 
         # Draw title and info
-        title_font = pygame.font.SysFont('Arial', 18, bold=True)
+        title_font = self.font_18_bold
         title = title_font.render("Frequency Spectrum", True, (0, 0, 0))
         title_rect = title.get_rect(topleft=(20, 10))
         self.screen.blit(title, title_rect)
@@ -397,13 +397,13 @@ class LiveSpectrum(BaseAudioVisualizer):
         """
         help_text = [
             "KEYBOARD SHORTCUTS:",
-            "G: Toggle Grid",
-            "H: Toggle Help",
+            "Ctrl/Cmd+G: Toggle Grid",
+            "Ctrl/Cmd+?: Toggle Help",
             "+/-: Adjust Gain",
             "ESC: Quit"
         ]
         
-        font = pygame.font.SysFont('Arial', 14)
+        font = self.font_14
         line_height = 25
         start_y = 80
         bg_color = (240, 240, 240)
@@ -430,6 +430,14 @@ class LiveSpectrum(BaseAudioVisualizer):
         """
         # Handle base events (quit, grid/help toggle)
         self.handle_base_events(self.event_holder)
+        
+        # Handle window resize events
+        if self.event_holder.resize is not None:
+            # Update internal dimensions
+            self.spec_config['gui_width'] = self.event_holder.resize.w
+            self.spec_config['gui_height'] = self.event_holder.resize.h
+            # Recreate screen with new dimensions
+            self.screen = pygame.display.set_mode((self.spec_config['gui_width'], self.spec_config['gui_height']), pygame.RESIZABLE)
         
         # Handle gain adjustment with +/- keys (3 dB per press)
         if self.event_holder.plus_equals:
