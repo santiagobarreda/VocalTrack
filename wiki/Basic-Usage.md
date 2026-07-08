@@ -185,8 +185,8 @@ These controls work across all four modes:
 | `Ctrl+G` | Toggle grid overlay |
 | `Ctrl+P` | Toggle performance monitor overlay |
 | `Ctrl+?` | Toggle help overlay with keyboard shortcuts |
-| `+` or `=` | Increase threshold/gain/dynamic range (mode-dependent) |
-| `-` or `_` | Decrease threshold/gain/dynamic range (mode-dependent) |
+| `+` | Increase threshold/gain/dynamic range (mode-dependent) |
+| `-` | Decrease threshold/gain/dynamic range (mode-dependent) |
 
 ## Mode-Specific Keyboard Controls
 

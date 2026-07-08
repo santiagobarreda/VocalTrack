@@ -62,8 +62,8 @@ Three visualization modes are available (configure in Formant Plot Settings):
 | `Ctrl+T` | Toggle vowel template overlay (IPA symbols) |
 | `Ctrl+G` | Toggle grid overlay |
 | `Ctrl+P` | Toggle performance monitor overlay |
-| `+` / `=` | Increase minimum RMS threshold (filter out more noise) |
-| `-` / `_` | Decrease minimum RMS threshold (capture quieter sounds) |
+| `+` | Increase minimum RMS threshold (filter out more noise) |
+| `-` | Decrease minimum RMS threshold (capture quieter sounds) |
 | `Backspace` | Undo last finished track |
 | `Delete` | Clear all finished tracks |
 | `Esc` | Quit and save WAV + CSV files |
@@ -188,8 +188,8 @@ Two scrolling modes are available (configure in Pitch Plot Settings):
 | `Ctrl+G` | Toggle grid overlay |
 | `Ctrl+P` | Toggle performance monitor overlay |
 | `Ctrl+?` | Toggle help overlay |
-| `+` / `=` | Increase minimum RMS threshold |
-| `-` / `_` | Decrease minimum RMS threshold |
+| `+` | Increase minimum RMS threshold |
+| `-` | Decrease minimum RMS threshold |
 | `Backspace` | Remove most recent finished track |
 | `Delete` | Clear all finished tracks |
 | `Esc` | Quit (file already saved when Space released) |
@@ -325,8 +325,8 @@ Choose from matplotlib colormaps (configure in Spectrogram Settings):
 
 | Key | Action |
 |-----|--------|
-| `+` / `=` | Decrease dynamic range (show more detail in quiet regions) |
-| `-` / `_` | Increase dynamic range (increase contrast) |
+| `+` | Decrease dynamic range (show more detail in quiet regions) |
+| `-` | Increase dynamic range (increase contrast) |
 | `Ctrl++` / `Ctrl+=` | Increase gain (make brighter overall) |
 | `Ctrl+-` / `Ctrl+_` | Decrease gain (make darker overall) |
 | `Ctrl+P` | Toggle performance monitor overlay |
@@ -454,8 +454,8 @@ The display shows:
 
 | Key | Action |
 |-----|--------|
-| `+` / `=` | Increase gain offset (shift spectrum up) |
-| `-` / `_` | Decrease gain offset (shift spectrum down) |
+| `+` | Increase gain offset (shift spectrum up) |
+| `-` | Decrease gain offset (shift spectrum down) |
 | `Ctrl+G` | Toggle grid overlay |
 | `Ctrl+P` | Toggle performance monitor overlay |
 | `Ctrl+?` | Toggle help overlay |
