@@ -358,7 +358,7 @@ class LivePitch(BaseAudioVisualizer):
                 self.draw_min_rms_display()  # Draw min_rms_db value if recently changed
                 self._draw_grid()  # Draw optional grid overlay (toggle with 'g')
                 self._draw_help_overlay()  # Draw optional help overlay (toggle with 'h')
-                self.draw_performance_overlay()  # Draw performance diagnostics (toggle with 'f')
+                self.draw_performance_overlay()  # Draw performance diagnostics (toggle with 'p')
 
                 pygame.display.flip()  # Present frame
         finally:  # Always clean up
@@ -763,6 +763,7 @@ class LivePitch(BaseAudioVisualizer):
             "Left click  - Add manual annotation point",  # Place a green marker
             "Right click - Clear all annotation points",  # Remove all green markers
             "Ctrl/Cmd+G - Toggle grid overlay",  # Show/hide time and frequency grid
+            "Ctrl/Cmd+P - Toggle performance overlay",  # Toggle performance monitor
             "Ctrl/Cmd+? - Toggle this help",  # Show/hide this overlay
             "ESC - Quit application",  # Exit the program
         ]  # End help text definition

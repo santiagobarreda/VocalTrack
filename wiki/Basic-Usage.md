@@ -66,6 +66,7 @@ All modes support real-time parameter adjustment:
 
 - **Minimum RMS threshold** (`+`/`-`): Filter out background noise
 - **Grid visibility** (`Ctrl+G`): Toggle reference grid overlay
+- **Performance Monitor** (`Ctrl+P`): Toggle real-time performance diagnostic overlay
 - **Help overlay** (`Ctrl+?`): Show keyboard shortcuts
 
 Mode-specific adjustments:
@@ -171,6 +172,7 @@ Navigate to the `recordings/` folder to find:
 **Key controls:**
 - `+`/`-`: Adjust gain offset (dB)
 - `Ctrl+G`: Toggle grid overlay
+- `Ctrl+P`: Toggle performance monitor overlay
 - `Ctrl+?`: Toggle help overlay
 
 ## Common Keyboard Controls
@@ -181,6 +183,7 @@ These controls work across all four modes:
 |-----|--------|
 | `Esc` | Quit mode and save (if applicable) |
 | `Ctrl+G` | Toggle grid overlay |
+| `Ctrl+P` | Toggle performance monitor overlay |
 | `Ctrl+?` | Toggle help overlay with keyboard shortcuts |
 | `+` or `=` | Increase threshold/gain/dynamic range (mode-dependent) |
 | `-` or `_` | Decrease threshold/gain/dynamic range (mode-dependent) |
@@ -357,4 +360,4 @@ VocalTrack includes built-in benchmarking tools:
 3. Follow recording instructions
 4. Review results in `benchmarking/` folder
 
-See [Benchmarking.md](../wiki/Benchmarking.md) for details.
+See [Benchmarking and Performance](Benchmarking-and-Performance) for details.

@@ -414,6 +414,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
         # Define help text lines (key: description)
         help_lines = [
             ('Ctrl/Cmd+?', 'Toggle this help overlay'),
+            ('Ctrl/Cmd+P', 'Toggle performance overlay'),
             ('ESC', 'Quit application'),
             ('', ''),  # Blank line for spacing
             ('+  / -', 'Decrease / Increase dynamic range'),

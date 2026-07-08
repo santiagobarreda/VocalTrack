@@ -840,6 +840,7 @@ class LiveVowel(BaseAudioVisualizer):
             "Backspace - Undo last track",
             "Delete - Clear all tracks",
             "Ctrl/Cmd+G - Toggle grid",
+            "Ctrl/Cmd+P - Toggle performance overlay",
             "Ctrl/Cmd+L - Toggle log/linear frequency scale",
             "Scroll - Scale IPA labels (in vowel picker mode)",
             "Ctrl/Cmd+? - Toggle this help overlay",

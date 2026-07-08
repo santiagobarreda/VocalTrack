@@ -404,6 +404,7 @@ class LiveSpectrum(BaseAudioVisualizer):
             "KEYBOARD SHORTCUTS:",
             "Ctrl/Cmd+G: Toggle Grid",
             "Ctrl/Cmd+?: Toggle Help",
+            "Ctrl/Cmd+P: Toggle Performance Monitor",
             "+/-: Adjust Gain",
             "ESC: Quit"
         ]

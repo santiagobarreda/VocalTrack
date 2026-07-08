@@ -141,7 +141,7 @@ Accessed via "Formant Plot Settings" button in launcher. Controls LiveVowel disp
 | `display_mode` | `'single'` | `'single'`, `'track'`, `'all'` | Visualization mode. `single` = latest point only, `track` = current trajectory, `all` = all trajectories. |
 | `freq_scale` | `'log'` | `'log'`, `'linear'` | Frequency axis scaling. `log` = logarithmic (perceptually uniform), `linear` = linear Hz. |
 | `show_vowel_template` | `False` | True/False | Whether to display vowel template overlay on startup. Toggle with `Ctrl+T` during use. |
-| `gui_size` | `(800, 600)` | (400, 800) pixels | Window dimensions (width, height). Larger = more detail, smaller = less CPU. |
+| `gui_size` | `(900, 650)` | (400, 800) pixels | Window dimensions (width, height). Larger = more detail, smaller = less CPU. |
 
 **F1/F2 Range Guidelines:**
 
@@ -169,8 +169,8 @@ Accessed via "Pitch Plot Settings" button in launcher. Controls LivePitch displa
 
 | Parameter | Default | Range | Description |
 |-----------|---------|-------|-------------|
-| `gui_width` | `850` | 400-2000 pixels | Window width. Wider = more temporal detail visible. |
-| `gui_height` | `500` | 300-1000 pixels | Window height. Taller = better frequency resolution on display. |
+| `gui_width` | `1200` | 400-2000 pixels | Window width. Wider = more temporal detail visible. |
+| `gui_height` | `650` | 300-1000 pixels | Window height. Taller = better frequency resolution on display. |
 | `min_f0` | `75` | 40-200 Hz | Lower bound of f0 display range. Independent of analysis min_f0. |
 | `max_f0` | `500` | 200-800 Hz | Upper bound of f0 display range. Independent of analysis max_f0. |
 | `fps` | `60` | 15-120 | Frame rate for display refresh. Higher = smoother animation, more CPU. |
@@ -206,14 +206,14 @@ Accessed via "Spectrogram Settings" button in launcher. Controls LiveSpectrogram
 | Parameter | Default | Range | Description |
 |-----------|---------|-------|-------------|
 | `gui_width` | `1200` | 600-2400 pixels | Window width. Wider = more temporal resolution (more time visible). |
-| `gui_height` | `600` | 300-1200 pixels | Window height. Taller = better frequency resolution on Y-axis. |
+| `gui_height` | `650` | 300-1200 pixels | Window height. Taller = better frequency resolution on Y-axis. |
 | `max_freq` | `5000` | 1000-10000 Hz | Maximum frequency displayed on Y-axis. Limited by Nyquist (sample_rate/2). Typical: 5000 Hz for speech. |
-| `display_seconds` | `1.0` | 0.5-5.0 s | Time window duration in seconds. Controls horizontal scroll speed. Smaller = faster scroll. |
+| `display_seconds` | `3.0` | 0.5-5.0 s | Time window duration in seconds. Controls horizontal scroll speed. Smaller = faster scroll. |
 | `colormap` | `'plasma'` | Any matplotlib colormap | Color mapping for magnitude visualization. `plasma`, `viridis`, `magma` recommended (perceptually uniform). |
 | `dynamic_range` | `40` | 20-80 dB | Dynamic range in dB for amplitude display. Smaller = more detail, larger = more contrast. Adjustable with `+`/`-` during use. |
 | `fps` | `60` | 15-120 | Frame rate for display refresh. Higher = smoother scrolling, more CPU. |
-| `chunk_ms` | `6.0` (UI default `15.0`) | 5-50 ms | Duration of each audio chunk for spectral analysis. Smaller = better time resolution, larger = better frequency resolution. |
-| `number_of_chunks` | `1` (UI default `3`) | 1-10 | Number of chunks combined into analysis window. Total window = chunk_ms × number_of_chunks. |
+| `chunk_ms` | `6.0` | 5-50 ms | Duration of each audio chunk for spectral analysis. Smaller = better time resolution, larger = better frequency resolution. |
+| `number_of_chunks` | `1` | 1-10 | Number of chunks combined into analysis window. Total window = chunk_ms × number_of_chunks. |
 | `padding_length_ms` | `20.0` | 0-100 ms | Zero-padding duration in milliseconds for FFT. Increases frequency resolution without changing time resolution. Larger = smoother frequency axis, more computation. |
 
 **Key parameters:**
@@ -251,7 +251,7 @@ Accessed via "Spectrum Settings" button in launcher. Controls LiveSpectrum displ
 | Parameter | Default | Range | Description |
 |-----------|---------|-------|-------------|
 | `gui_width` | `1200` | 600-2400 pixels | Window width. Affects X-axis frequency scale rendering. |
-| `gui_height` | `600` | 300-1200 pixels | Window height. Affects Y-axis amplitude scale rendering. |
+| `gui_height` | `650` | 300-1200 pixels | Window height. Affects Y-axis amplitude scale rendering. |
 | `max_freq` | `5000` | 1000-10000 Hz | Maximum frequency displayed on X-axis. Limited by Nyquist. Typical: 5000 Hz for speech. |
 | `dynamic_range` | `40` | 20-80 dB | Dynamic range in dB for Y-axis amplitude display. Controls vertical scale compression. |
 | `fps` | `60` | 15-120 | Frame rate for display refresh. Higher = smoother updates, more CPU. |

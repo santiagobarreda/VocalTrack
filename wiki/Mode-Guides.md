@@ -33,6 +33,7 @@ The display shows a 2D plot in the style of the IPA vowel quadrilateral:
   - Pre-loaded vowel templates (toggle with `Ctrl+T`). These come in the 'templates' folder. If you rename one to 'vowel_template.csv', that file will be used. If not such file exists templates will not work
   - Menu to toggle IPA symbols on/off (toggle with `Ctrl+V`). The IPA symbols can be dragged aroundto provide markers or targets for speakers
   - Grid lines (toggle with `Ctrl+G`)
+  - Performance monitor overlay (toggle with `Ctrl+P`)
   - Help overlay (toggle with `Ctrl+?`)
 
 ### Display Modes
@@ -60,6 +61,7 @@ Three visualization modes are available (configure in Formant Plot Settings):
 | `Ctrl+?` | Toggle help overlay (stops recording when shown, starts when hidden) |
 | `Ctrl+T` | Toggle vowel template overlay (IPA symbols) |
 | `Ctrl+G` | Toggle grid overlay |
+| `Ctrl+P` | Toggle performance monitor overlay |
 | `+` / `=` | Increase minimum RMS threshold (filter out more noise) |
 | `-` / `_` | Decrease minimum RMS threshold (capture quieter sounds) |
 | `Backspace` | Undo last finished track |
@@ -160,6 +162,7 @@ The display shows:
 - **Pitch contour**: Connected line showing f0 trajectory
 - **Optional overlays**:
   - Grid lines (toggle with `Ctrl+G`)
+  - Performance monitor overlay (toggle with `Ctrl+P`)
   - Help overlay (toggle with `Ctrl+?`)
 
 ### Plot Modes
@@ -183,6 +186,7 @@ Two scrolling modes are available (configure in Pitch Plot Settings):
 | `Space` (hold) | Start recording pitch segment (push-to-talk) |
 | `Space` (release) | Stop recording and export segment |
 | `Ctrl+G` | Toggle grid overlay |
+| `Ctrl+P` | Toggle performance monitor overlay |
 | `Ctrl+?` | Toggle help overlay |
 | `+` / `=` | Increase minimum RMS threshold |
 | `-` / `_` | Decrease minimum RMS threshold |
@@ -303,6 +307,7 @@ The display shows:
 - **Color-coding**: Intensity mapped to colormap (bright = high energy, dark = low energy)
 - **Scrolling behavior**: New spectrum appended on right, old data shifts left
 - **Optional overlays**:
+  - Performance monitor overlay (toggle with `Ctrl+P`)
   - Help overlay (toggle with `Ctrl+?`)
 
 ### Colormap Options
@@ -324,6 +329,7 @@ Choose from matplotlib colormaps (configure in Spectrogram Settings):
 | `-` / `_` | Increase dynamic range (increase contrast) |
 | `Ctrl++` / `Ctrl+=` | Increase gain (make brighter overall) |
 | `Ctrl+-` / `Ctrl+_` | Decrease gain (make darker overall) |
+| `Ctrl+P` | Toggle performance monitor overlay |
 | `Ctrl+?` | Toggle help overlay |
 | `Esc` | Quit |
 
@@ -440,8 +446,8 @@ The display shows:
 - **Vertical axis (Y)**: Power (dB)
 - **Line plot**: Single continuous line showing spectrum magnitude
 - **Averaging**: Spectrum is averaged across multiple audio frames for stability
-- **Optional overlays**:
   - Grid lines (toggle with `Ctrl+G`)
+  - Performance monitor overlay (toggle with `Ctrl+P`)
   - Help overlay (toggle with `Ctrl+?`)
 
 ### Interaction and Controls
@@ -451,6 +457,7 @@ The display shows:
 | `+` / `=` | Increase gain offset (shift spectrum up) |
 | `-` / `_` | Decrease gain offset (shift spectrum down) |
 | `Ctrl+G` | Toggle grid overlay |
+| `Ctrl+P` | Toggle performance monitor overlay |
 | `Ctrl+?` | Toggle help overlay |
 | `Esc` | Quit |
 

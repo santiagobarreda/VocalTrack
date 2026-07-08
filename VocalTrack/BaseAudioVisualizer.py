@@ -128,8 +128,8 @@ class BaseAudioVisualizer:
             help_status = "shown" if self.show_help else "hidden"
             logger.debug(f"Help overlay {help_status}")
         
-        # If the user presses Ctrl+F...
-        if event_holder.ctrl_f:
+        # If the user presses Ctrl+P...
+        if event_holder.ctrl_p:
             self.show_performance = not self.show_performance
             perf_status = "ON" if self.show_performance else "OFF"
             logger.debug(f"Performance overlay toggled {perf_status}")
