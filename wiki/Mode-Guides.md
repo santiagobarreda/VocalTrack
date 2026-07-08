@@ -30,11 +30,11 @@ The display shows a 2D plot in the style of the IPA vowel quadrilateral:
 - **Vertical axis (Y)**: Inverted F1 formant frequency (typically 200-1200 Hz), i.e. vowel height
 - **Axes reversed**: Higher frequencies appear toward the left and bottom (matching conventional vowel chart orientation)
 - **Optional overlays**: 
-  - Pre-loaded vowel templates (toggle with `Ctrl+T`). These come in the 'templates' folder. If you rename one to 'vowel_template.csv', that file will be used. If not such file exists templates will not work
-  - Menu to toggle IPA symbols on/off (toggle with `Ctrl+V`). The IPA symbols can be dragged aroundto provide markers or targets for speakers
-  - Grid lines (toggle with `Ctrl+G`)
-  - Performance monitor overlay (toggle with `Ctrl+P`)
-  - Help overlay (toggle with `Ctrl+?`)
+  - Pre-loaded vowel templates (toggle with `Ctrl/Cmd+T`). These come in the 'templates' folder. If you rename one to 'vowel_template.csv', that file will be used. If not such file exists templates will not work
+  - Menu to toggle IPA symbols on/off (toggle with `Ctrl/Cmd+V`). The IPA symbols can be dragged aroundto provide markers or targets for speakers
+  - Grid lines (toggle with `Ctrl/Cmd+G`)
+  - Performance monitor overlay (toggle with `Ctrl/Cmd+P`)
+  - Help overlay (toggle with `Ctrl/Cmd+?`)
 
 ### Display Modes
 
@@ -56,12 +56,12 @@ Three visualization modes are available (configure in Formant Plot Settings):
 
 | Key | Action |
 |-----|--------|
-| `Ctrl+V` | Toggle IPA chooser menu |
-| `Ctrl+R` | Toggle recording state |
-| `Ctrl+?` | Toggle help overlay (stops recording when shown, starts when hidden) |
-| `Ctrl+T` | Toggle vowel template overlay (IPA symbols) |
-| `Ctrl+G` | Toggle grid overlay |
-| `Ctrl+P` | Toggle performance monitor overlay |
+| `Ctrl/Cmd+V` | Toggle IPA chooser menu |
+| `Ctrl/Cmd+R` | Toggle recording state |
+| `Ctrl/Cmd+?` | Toggle help overlay (stops recording when shown, starts when hidden) |
+| `Ctrl/Cmd+T` | Toggle vowel template overlay (IPA symbols) |
+| `Ctrl/Cmd+G` | Toggle grid overlay |
+| `Ctrl/Cmd+P` | Toggle performance monitor overlay |
 | `+` | Increase minimum RMS threshold (filter out more noise) |
 | `-` | Decrease minimum RMS threshold (capture quieter sounds) |
 | `Backspace` | Undo last finished track |
@@ -71,11 +71,12 @@ Three visualization modes are available (configure in Formant Plot Settings):
 ### Workflow
 
 1. **Launch**: Click "LiveVowel" button in launcher
-2. **Speak**: Produce vowels or continuous speech
-3. **Monitor**: Watch formant points appear in real-time
-4. **Adjust threshold**: Use `+`/`-` to filter background noise if needed
-5. **Manage tracks**: Use `Backspace` to undo last track, `Delete` to clear all
-6. **Export**: Press `Esc` to quit and save files to `recordings/`
+2. **Disable help overlay**: Use `Ctrl/Cmd+?` key after display initializes
+3. **Speak**: Produce vowels or continuous speech
+4. **Monitor**: Watch formant points appear in real-time
+5. **Adjust threshold**: Use `+`/`-` to filter background noise if needed
+6. **Manage tracks**: Use `Backspace` to undo last track, `Delete` to clear all
+7. **Export**: Press `Esc` to quit and save files to `recordings/`
 
 ### Recording Behavior
 
@@ -161,9 +162,9 @@ The display shows:
 - **Frequency scale**: Logarithmic or linear (matches perception vs. linear Hz)
 - **Pitch contour**: Connected line showing f0 trajectory
 - **Optional overlays**:
-  - Grid lines (toggle with `Ctrl+G`)
-  - Performance monitor overlay (toggle with `Ctrl+P`)
-  - Help overlay (toggle with `Ctrl+?`)
+  - Grid lines (toggle with `Ctrl/Cmd+G`)
+  - Performance monitor overlay (toggle with `Ctrl/Cmd+P`)
+  - Help overlay (toggle with `Ctrl/Cmd+?`)
 
 ### Plot Modes
 
@@ -185,9 +186,9 @@ Two scrolling modes are available (configure in Pitch Plot Settings):
 |-----|--------|
 | `Space` (hold) | Start recording pitch segment (push-to-talk) |
 | `Space` (release) | Stop recording and export segment |
-| `Ctrl+G` | Toggle grid overlay |
-| `Ctrl+P` | Toggle performance monitor overlay |
-| `Ctrl+?` | Toggle help overlay |
+| `Ctrl/Cmd+G` | Toggle grid overlay |
+| `Ctrl/Cmd+P` | Toggle performance monitor overlay |
+| `Ctrl/Cmd+?` | Toggle help overlay |
 | `+` | Increase minimum RMS threshold |
 | `-` | Decrease minimum RMS threshold |
 | `Backspace` | Remove most recent finished track |
@@ -197,7 +198,7 @@ Two scrolling modes are available (configure in Pitch Plot Settings):
 ### Workflow
 
 1. **Launch**: Click "LivePitch" button in launcher
-2. **Position cursor**: Wait for display to initialize
+2. **Disable help overlay**: Use `Ctrl/Cmd+?` key after display initializes
 3. **Hold Space**: Press and hold Space key to start recording
 4. **Speak/sing**: Produce target intonation or melody
 5. **Monitor**: Watch f0 contour appear in real-time
@@ -307,8 +308,8 @@ The display shows:
 - **Color-coding**: Intensity mapped to colormap (bright = high energy, dark = low energy)
 - **Scrolling behavior**: New spectrum appended on right, old data shifts left
 - **Optional overlays**:
-  - Performance monitor overlay (toggle with `Ctrl+P`)
-  - Help overlay (toggle with `Ctrl+?`)
+  - Performance monitor overlay (toggle with `Ctrl/Cmd+P`)
+  - Help overlay (toggle with `Ctrl/Cmd+?`)
 
 ### Colormap Options
 
@@ -327,13 +328,13 @@ Choose from matplotlib colormaps (configure in Spectrogram Settings):
 |-----|--------|
 | `+` | Decrease dynamic range (show more detail in quiet regions) |
 | `-` | Increase dynamic range (increase contrast) |
-| `Ctrl++` / `Ctrl+=` | Increase gain (make brighter overall) |
-| `Ctrl+-` / `Ctrl+_` | Decrease gain (make darker overall) |
-| `Ctrl+P` | Toggle performance monitor overlay |
-| `Ctrl+?` | Toggle help overlay |
+| `Ctrl/Cmd++` / `Ctrl/Cmd+=` | Increase gain (make brighter overall) |
+| `Ctrl/Cmd+-` / `Ctrl/Cmd+_` | Decrease gain (make darker overall) |
+| `Ctrl/Cmd+P` | Toggle performance monitor overlay |
+| `Ctrl/Cmd+?` | Toggle help overlay |
 | `Esc` | Quit |
 
-**Note**: Grid toggle (`Ctrl+G`) is not implemented in LiveSpectrogram.
+**Note**: Grid toggle (`Ctrl/Cmd+G`) is not implemented in LiveSpectrogram.
 
 ### Workflow
 
@@ -342,7 +343,7 @@ Choose from matplotlib colormaps (configure in Spectrogram Settings):
 3. **Speak**: Spectrogram appears immediately as you speak
 4. **Adjust display**:
    - Use `+`/`-` to adjust dynamic range (detail vs. contrast)
-   - Use `Ctrl++`/`Ctrl+-` to adjust gain (brightness)
+   - Use `Ctrl/Cmd++`/`Ctrl/Cmd+-` to adjust gain (brightness)
 5. **Monitor**: Observe formants, voicing, fricatives, stops, etc.
 6. **Quit**: Press `Esc` to close (no automatic export)
 
@@ -375,7 +376,7 @@ To capture data from LiveSpectrogram:
    - Larger range (50-60 dB): More contrast, clearer formant bars
    - Default (40 dB): Balanced detail and contrast
 
-3. Adjust gain (in-window `Ctrl++`/`Ctrl+-`):
+3. Adjust gain (in-window `Ctrl/Cmd++`/`Ctrl/Cmd+-`):
    - Increase gain if spectrogram appears too dark
    - Decrease gain if everything appears saturated/bright
    - Find balance where formants are visible without noise floor dominating
@@ -446,9 +447,9 @@ The display shows:
 - **Vertical axis (Y)**: Power (dB)
 - **Line plot**: Single continuous line showing spectrum magnitude
 - **Averaging**: Spectrum is averaged across multiple audio frames for stability
-  - Grid lines (toggle with `Ctrl+G`)
-  - Performance monitor overlay (toggle with `Ctrl+P`)
-  - Help overlay (toggle with `Ctrl+?`)
+  - Grid lines (toggle with `Ctrl/Cmd+G`)
+  - Performance monitor overlay (toggle with `Ctrl/Cmd+P`)
+  - Help overlay (toggle with `Ctrl/Cmd+?`)
 
 ### Interaction and Controls
 
@@ -456,9 +457,9 @@ The display shows:
 |-----|--------|
 | `+` | Increase gain offset (shift spectrum up) |
 | `-` | Decrease gain offset (shift spectrum down) |
-| `Ctrl+G` | Toggle grid overlay |
-| `Ctrl+P` | Toggle performance monitor overlay |
-| `Ctrl+?` | Toggle help overlay |
+| `Ctrl/Cmd+G` | Toggle grid overlay |
+| `Ctrl/Cmd+P` | Toggle performance monitor overlay |
+| `Ctrl/Cmd+?` | Toggle help overlay |
 | `Esc` | Quit |
 
 ### Workflow
@@ -550,7 +551,7 @@ The display shows:
 **Formant frequency estimation:**
 1. Identify broad peaks in spectrum envelope
 2. Read approximate formant frequencies from X-axis
-3. Use grid (`Ctrl+G`) for easier frequency reading
+3. Use grid (`Ctrl/Cmd+G`) for easier frequency reading
 
 ---
 
@@ -559,11 +560,11 @@ The display shows:
 | Feature | LiveVowel | LivePitch | LiveSpectrogram | LiveSpectrum |
 |---------|-----------|-----------|-----------------|--------------|
 | **Primary display** | F1/F2 scatter plot | f0 contour line | Scrolling spectrogram | Static spectrum line |
-| **Recording control** | Ctrl+R or Ctrl+? (toggle) | Space (push-to-talk) | None (always on) | None (always on) |
+| **Recording control** | Ctrl/Cmd+R or Ctrl/Cmd+? (toggle) | Space (push-to-talk) | None (always on) | None (always on) |
 | **Exports WAV** | Yes | Yes | No (by default) | No (by default) |
 | **Exports CSV** | Yes (formants) | Yes (pitch) | No (by default) | No (by default) |
 | **Best for** | Vowel analysis | Intonation training | Phonetic transcription | Spectral analysis |
 | **Key advantage** | Direct vowel space visualization | Simple push-to-talk workflow | Rich acoustic detail | Harmonic structure |
 | **Typical use case** | Pronunciation training | Tone language learning | Formant transitions | Resonance monitoring |
 
-All modes share common controls (`Ctrl+G` for grid, `Ctrl+?` for help, `Esc` to quit) and support real-time parameter adjustment.
+All modes share common controls (`Ctrl/Cmd+G` for grid, `Ctrl/Cmd+?` for help, `Esc` to quit) and support real-time parameter adjustment.
