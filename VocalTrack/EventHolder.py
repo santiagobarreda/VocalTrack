@@ -46,6 +46,7 @@ class EventHolder:
         self.ctrl_l = None            # Ctrl+L pressed (toggle log/linear frequency scale)
         self.ctrl_t = None            # Ctrl+T pressed (toggle template vowels)
         self.ctrl_r = None            # Ctrl+R pressed (toggle recording)
+        self.ctrl_f = None            # Ctrl+F pressed (toggle performance overlay)
         self.space_down = None        # Space pressed (start recording)
         self.space_up = None          # Space released (stop recording)
 
@@ -117,6 +118,9 @@ class EventHolder:
                 elif event.mod & modifier_mask and event.key == pygame.K_r:
                     # Ctrl+R pressed - toggle recording
                     self.ctrl_r = event
+                elif event.mod & modifier_mask and event.key == pygame.K_f:
+                    # Ctrl+F pressed - toggle performance overlay
+                    self.ctrl_f = event
                 elif event.key == pygame.K_BACKSPACE:
                     # Backspace pressed (undo last track)
                     self.backspace = event

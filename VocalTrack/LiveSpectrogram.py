@@ -125,6 +125,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
             gui_height=self.spec_config['gui_height'],
             input_device_index=input_device_index
         )
+        self.target_fps = self.fps
         
         # Store GUI dimensions from config for easy reference
         self.GUI_WIDTH = self.spec_config['gui_width']
@@ -618,6 +619,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
                 # Drain the queue of all available sounds to keep the display up-to-date.
                 # This is non-blocking and ensures the display is as smooth as possible.
                 max_sounds_per_frame = 20  # Limit to prevent stalling the app
+                sounds_processed_this_frame = 0
                 for _ in range(max_sounds_per_frame):
                     try:
                         # Use get_nowait() for a non-blocking call.
@@ -637,9 +639,12 @@ class LiveSpectrogram(BaseAudioVisualizer):
                                     self.audio_buffer.extend(int16_samples.tolist())
                                 except Exception:
                                     pass
+                            sounds_processed_this_frame += 1
                     except queue.Empty:
                         # The queue is empty, so we're done processing for this frame.
                         break
+                
+                self.current_batch_size = sounds_processed_this_frame
                 
                 # CLEAR DISPLAY
                 # Fill entire screen with black to prevent ghosting artifacts
@@ -664,6 +669,8 @@ class LiveSpectrogram(BaseAudioVisualizer):
                 # DRAW HELP OVERLAY (if toggled on with Ctrl/Cmd+?)
                 if self.show_help:
                     self.draw_help_overlay()
+                
+                self.draw_performance_overlay()
                 
                 # UPDATE DISPLAY
                 # Flip pygame double buffer to show rendered frame on screen

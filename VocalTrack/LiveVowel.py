@@ -86,6 +86,7 @@ class LiveVowel(BaseAudioVisualizer):
             gui_height=gui_size[1],
             input_device_index=input_device_index
         )
+        self.target_fps = self.gui_info.get('fps', 60)
 
         # Create Sound object for formant analysis (will be reused for each frame)
         self.sound = Sound(**self.analysis_config)
@@ -200,6 +201,7 @@ class LiveVowel(BaseAudioVisualizer):
                 if self.show_help:
                     self.draw_help_overlay()
                 self.draw_mode_status()
+                self.draw_performance_overlay()
                 
                 # Swap display buffers to show everything drawn this frame
                 # Double buffering prevents tearing/flicker
@@ -292,6 +294,8 @@ class LiveVowel(BaseAudioVisualizer):
                     break
                 except AttributeError:
                     break
+            
+            self.current_batch_size = len(sounds_to_process)
             
             if sounds_to_process:
                 num_sounds = len(sounds_to_process)

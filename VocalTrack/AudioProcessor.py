@@ -125,6 +125,12 @@ class AudioProcessor(QThread):
         self.recording_enabled = False
         # Thread lock to protect recording buffer from concurrent access
         self.recording_lock = threading.Lock()
+        # Rates and counters for the performance monitor overlay
+        self.captured_chunks_count = 0
+        self.analyzed_windows_count = 0
+        self.last_rate_update_time = time.perf_counter()
+        self.current_capture_rate = 0.0
+        self.current_analysis_rate = 0.0
         # Device-rate/original recording buffer and analysis-rate/downsampled buffer.
         self.raw_recording = []
         self.downsampled_recording = []
@@ -402,6 +408,8 @@ class AudioProcessor(QThread):
                     try:
                         # Use put_nowait to avoid blocking the real-time audio capture loop
                         self.raw_samples_queue.put_nowait(normalized_samples)
+                        with self.recording_lock:
+                            self.captured_chunks_count += 1
                     except queue.Full:
                         # Queue is full - drop this frame and log a warning
                         # This happens if analysis is slower than audio capture
@@ -497,6 +505,8 @@ class AudioProcessor(QThread):
                 try:
                     # Use put_nowait to avoid blocking the analysis thread
                     self.analyzed_sounds_queue.put_nowait(sound_object)
+                    with self.recording_lock:
+                        self.analyzed_windows_count += 1
                 except queue.Full:
                     # Queue is full - drop this analyzed frame
                     # This happens if the GUI is not consuming analyzed sounds fast enough
@@ -620,3 +630,25 @@ class AudioProcessor(QThread):
     def get_downsampled_recording_sample_rate(self):
         """Return the sample rate of the buffered analysis-rate/downsampled recording stream."""
         return int(self.analysis_sample_rate)
+
+    def _update_rates(self):
+        """Update capture and analysis rates over a 1-second interval."""
+        now = time.perf_counter()
+        elapsed = now - self.last_rate_update_time
+        if elapsed >= 1.0:
+            with self.recording_lock:
+                self.current_capture_rate = self.captured_chunks_count / elapsed
+                self.current_analysis_rate = self.analyzed_windows_count / elapsed
+                self.captured_chunks_count = 0
+                self.analyzed_windows_count = 0
+                self.last_rate_update_time = now
+
+    def get_capture_rate(self):
+        """Return the current mono audio chunk capture rate per second."""
+        self._update_rates()
+        return self.current_capture_rate
+
+    def get_analysis_rate(self):
+        """Return the current DSP window analysis rate per second."""
+        self._update_rates()
+        return self.current_analysis_rate

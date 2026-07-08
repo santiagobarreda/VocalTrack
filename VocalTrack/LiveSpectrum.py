@@ -117,6 +117,7 @@ class LiveSpectrum(BaseAudioVisualizer):
             gui_height=gui_size[1],
             input_device_index=input_device_index
         )
+        self.target_fps = self.fps
 
         # Create audio processor for background audio capture
         self.audio_processor = AudioProcessor(
@@ -196,6 +197,8 @@ class LiveSpectrum(BaseAudioVisualizer):
                 # Draw help overlay if enabled (toggle with 'h')
                 if self.show_help:
                     self.draw_help_overlay()
+                
+                self.draw_performance_overlay()
 
                 # Swap display buffers to show everything drawn this frame
                 pygame.display.flip()
@@ -235,6 +238,8 @@ class LiveSpectrum(BaseAudioVisualizer):
                     
             except queue.Empty:
                 break
+        
+        self.current_batch_size = self.sounds_processed_this_frame
 
 
     def draw_spectrum_line(self):

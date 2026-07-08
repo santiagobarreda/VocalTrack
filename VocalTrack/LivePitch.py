@@ -86,6 +86,7 @@ class LivePitch(BaseAudioVisualizer):
             gui_height=self.pitch_config['gui_height'],
             input_device_index=input_device_index
         )
+        self.target_fps = self.pitch_config['fps']
 
         # Core state and buffers
         self.sound = Sound(**self.analysis_config)  # Current audio analysis frame
@@ -357,6 +358,7 @@ class LivePitch(BaseAudioVisualizer):
                 self.draw_min_rms_display()  # Draw min_rms_db value if recently changed
                 self._draw_grid()  # Draw optional grid overlay (toggle with 'g')
                 self._draw_help_overlay()  # Draw optional help overlay (toggle with 'h')
+                self.draw_performance_overlay()  # Draw performance diagnostics (toggle with 'f')
 
                 pygame.display.flip()  # Present frame
         finally:  # Always clean up
@@ -379,6 +381,8 @@ class LivePitch(BaseAudioVisualizer):
                         break
                     except AttributeError:
                         break
+                
+                self.current_batch_size = len(sounds_to_process)
                 
                 if sounds_to_process:
                     num_sounds = len(sounds_to_process)

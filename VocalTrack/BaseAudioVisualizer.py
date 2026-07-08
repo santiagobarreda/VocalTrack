@@ -70,9 +70,12 @@ class BaseAudioVisualizer:
         # Create a switch to keep the program running. If flipped to False, the app closes.
         self.keep_running = True
         
-        # Create switches for universal visual settings (Grid and Help menu)
+        # Create switches for universal visual settings (Grid, Help, and Performance menu)
         self.show_grid = True
         self.show_help = True
+        self.show_performance = False
+        self.target_fps = 60
+        self.current_batch_size = 0
         # Look in the settings to see if the user wants Logarithmic or Linear spacing
         self.freq_scale = self.config.get('freq_scale', 'log')
         
@@ -98,6 +101,7 @@ class BaseAudioVisualizer:
 
         # Initialize default fonts to avoid recreating them on every frame (heavy OS lookup)
         self.default_font_28 = pygame.font.SysFont(None, 28)
+        self.default_font_18 = pygame.font.SysFont(None, 18)
 
     def handle_base_events(self, event_holder):
         """Translates keyboard presses that do the exact same thing in every visualizer.
@@ -123,6 +127,12 @@ class BaseAudioVisualizer:
             # Log the change
             help_status = "shown" if self.show_help else "hidden"
             logger.debug(f"Help overlay {help_status}")
+        
+        # If the user presses Ctrl+F...
+        if event_holder.ctrl_f:
+            self.show_performance = not self.show_performance
+            perf_status = "ON" if self.show_performance else "OFF"
+            logger.debug(f"Performance overlay toggled {perf_status}")
         
         # If the user presses the Backspace key...
         if event_holder.backspace:
@@ -259,3 +269,109 @@ class BaseAudioVisualizer:
         # Completely shut down the Pygame graphics engine
         pygame.quit()
         logger.info("Application shutdown complete")
+
+    def draw_performance_overlay(self):
+        """Draws a real-time performance diagnostic overlay in the top-right corner."""
+        if not getattr(self, 'show_performance', False):
+            return
+
+        # Fetch metrics
+        actual_fps = self.clock.get_fps()
+        target_fps = getattr(self, 'target_fps', 60)
+
+        # Get actual chunk duration from processor if available, fallback to config
+        if self.audio_processor is not None:
+            chunk_ms = getattr(self.audio_processor, 'chunk_ms', 20.0)
+        else:
+            chunk_ms = self.audio_config.get('chunk_ms', 20.0)
+        expected_audio_rate = 1000.0 / chunk_ms if chunk_ms > 0 else 50.0
+
+        # Safely get rates from audio processor
+        is_audio_running = self.audio_processor is not None and getattr(self.audio_processor, 'running', False)
+        if is_audio_running:
+            capture_rate = self.audio_processor.get_capture_rate()
+            analysis_rate = self.audio_processor.get_analysis_rate()
+        else:
+            capture_rate = 0.0
+            analysis_rate = 0.0
+
+        batch_size = getattr(self, 'current_batch_size', 0)
+
+        # Build lines of text
+        fps_pct = (actual_fps / target_fps * 100) if target_fps > 0 else 0.0
+        capture_pct = (capture_rate / expected_audio_rate * 100) if expected_audio_rate > 0 else 0.0
+        analysis_pct = (analysis_rate / expected_audio_rate * 100) if expected_audio_rate > 0 else 0.0
+
+        lines = [
+            "PERFORMANCE MONITOR",
+            f"GUI FPS:  {actual_fps:4.1f} / {target_fps} fps ({fps_pct:.2f}%)",
+            f"Audio In: {capture_rate:4.1f} / {expected_audio_rate:.1f} ch/s ({capture_pct:.2f}%)",
+            f"Analysis: {analysis_rate:4.1f} / {expected_audio_rate:.1f} win/s ({analysis_pct:.2f}%)",
+            f"Queue:    {batch_size} windows"
+        ]
+
+        # Draw panel container (semi-transparent dark gray)
+        padding = 10
+        line_height = 20
+        panel_w = 260
+        panel_h = padding * 2 + len(lines) * line_height - 5
+
+        # Position panel in top right, slightly offset
+        screen_rect = self.screen.get_rect()
+        panel_x = screen_rect.right - panel_w - 10
+        panel_y = 10
+
+        # Create overlay surface for transparency
+        overlay = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        # Fill with semi-transparent dark gray (RGBA)
+        overlay.fill((30, 30, 30, 200))
+        # Draw a thin light gray border outline
+        pygame.draw.rect(overlay, (200, 200, 200, 255), (0, 0, panel_w, panel_h), 1)
+
+        # Render text
+        font = self.default_font_18
+        
+        # Color coding helper
+        def get_color(actual, target, toleration=0.90, critical=0.75):
+            if target <= 0:
+                return (255, 255, 255)
+            ratio = actual / target
+            if ratio >= toleration:
+                return (100, 255, 100) # Light Green
+            elif ratio >= critical:
+                return (255, 255, 100) # Light Yellow
+            else:
+                return (255, 100, 100) # Light Red
+
+        for i, line in enumerate(lines):
+            y_offset = padding + i * line_height
+            if i == 0:
+                # Title - white and bold-ish
+                text_surface = font.render(line, True, (255, 255, 255))
+            elif i == 1:
+                # GUI FPS
+                col = get_color(actual_fps, target_fps)
+                text_surface = font.render(line, True, col)
+            elif i == 2:
+                # Audio capture rate
+                col = get_color(capture_rate, expected_audio_rate) if is_audio_running else (150, 150, 150)
+                lbl = line if is_audio_running else "Audio In: Idle"
+                text_surface = font.render(lbl, True, col)
+            elif i == 3:
+                # DSP analysis rate
+                col = get_color(analysis_rate, expected_audio_rate) if is_audio_running else (150, 150, 150)
+                lbl = line if is_audio_running else "Analysis: Idle"
+                text_surface = font.render(lbl, True, col)
+            elif i == 4:
+                # Batch size
+                if batch_size <= 1:
+                    col = (100, 255, 100)
+                elif batch_size <= 3:
+                    col = (255, 255, 100)
+                else:
+                    col = (255, 100, 100)
+                text_surface = font.render(line, True, col)
+
+            overlay.blit(text_surface, (10, y_offset))
+
+        self.screen.blit(overlay, (panel_x, panel_y))
