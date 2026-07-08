@@ -20,7 +20,7 @@ AUDIO_CONFIG = {
     'sample_rate': 10000,  # Auto-calculated as 2 × max_formant (Nyquist theorem: 5000 Hz × 2 = 10000 Hz)
     'chunk_ms': 20,  # Duration of each chunk in milliseconds
     'number_of_chunks': 3,  # Number of chunks to stitch together for analysis window
-    'min_rms_db': -50.0  # Minimum RMS amplitude in dB for analysis
+    'min_rms_db': -60.0  # Minimum RMS amplitude in dB for analysis
 }
 
 # GUI - LiveVowel
