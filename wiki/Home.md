@@ -12,7 +12,7 @@ Welcome to the VocalTrack documentation. This wiki provides comprehensive guides
 - [Mode Guides](Mode-Guides) - Detailed guides for each visualization mode
 - [Settings Reference](Settings-Reference) - Complete parameter documentation
 - [Outputs and File Formats](Outputs-and-File-Formats) - Export file specifications
-- [Benchmarking](Benchmarking) - Accuracy and timing benchmarks
+- [Benchmarking and Performance](Benchmarking-and-Performance) - Accuracy and timing benchmarks, and real-time performance monitor
 - [Troubleshooting](Troubleshooting) - Common issues and solutions
 
 ## Quick Start
