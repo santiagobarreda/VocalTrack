@@ -291,11 +291,13 @@ class BaseAudioVisualizer:
         if is_audio_running:
             capture_rate = self.audio_processor.get_capture_rate()
             analysis_rate = self.audio_processor.get_analysis_rate()
+            queue_size = self.audio_processor.get_analysis_queue_size()
+            queue_max = self.audio_processor.get_analysis_queue_maxsize()
         else:
             capture_rate = 0.0
             analysis_rate = 0.0
-
-        batch_size = getattr(self, 'current_batch_size', 0)
+            queue_size = 0
+            queue_max = 50
 
         # Build lines of text
         fps_pct = (actual_fps / target_fps * 100) if target_fps > 0 else 0.0
@@ -307,7 +309,7 @@ class BaseAudioVisualizer:
             f"GUI FPS:  {actual_fps:4.1f} / {target_fps} fps ({fps_pct:.2f}%)",
             f"Audio In: {capture_rate:4.1f} / {expected_audio_rate:.1f} ch/s ({capture_pct:.2f}%)",
             f"Analysis: {analysis_rate:4.1f} / {expected_audio_rate:.1f} win/s ({analysis_pct:.2f}%)",
-            f"Queue:    {batch_size} windows"
+            f"Queue:    {queue_size} / {queue_max} chunks"
         ]
 
         # Draw panel container (semi-transparent dark gray)
@@ -363,13 +365,8 @@ class BaseAudioVisualizer:
                 lbl = line if is_audio_running else "Analysis: Idle"
                 text_surface = font.render(lbl, True, col)
             elif i == 4:
-                # Batch size
-                if batch_size <= 1:
-                    col = (100, 255, 100)
-                elif batch_size <= 3:
-                    col = (255, 255, 100)
-                else:
-                    col = (255, 100, 100)
+                # Analysis queue size
+                col = get_color(queue_max - queue_size, queue_max, toleration=0.90, critical=0.50) if is_audio_running else (150, 150, 150)
                 text_surface = font.render(line, True, col)
 
             overlay.blit(text_surface, (10, y_offset))

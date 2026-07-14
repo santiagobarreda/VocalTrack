@@ -27,7 +27,7 @@ AUDIO_CONFIG = {
 LIVEVOWEL_CONFIG = {
     'gui_size': (900.0, 650.0),
     'f1_range': (200.0, 1200.0),
-    'f2_range': (500.0, 2700.0),
+    'f2_range': (500.0, 3000.0),
     'fps': 60,
     'show_vowel_template': False,  # Show vowel template overlay
     'display_mode': 'single',  # Visualization mode: 'single', 'track', or 'all'
@@ -55,6 +55,7 @@ LIVESPECTROGRAM_CONFIG = {
     'display_seconds': 3.0,  # Time window duration in seconds; controls horizontal scroll speed (5s typical for real-time response)
     'colormap': 'plasma',  # Matplotlib colormap name for magnitude-to-color mapping; 'plasma' is perceptually uniform
     'dynamic_range': 40,  # Dynamic range in dB for spectrogram amplitude display; controls contrast (smaller=more detail, larger=more contrast)
+    'gain_db': 0.0,  # Default gain in dB for spectrogram display brightness
     'fps': 60,  # Frame rate for display refresh (30 fps is UI-responsive but lower CPU than 60)
     'chunk_ms': 6.0,                 # Duration of each audio chunk in ms
     'number_of_chunks': 1,            # Number of chunks to form a complete analysis window (15ms * 3 = 45ms window)
@@ -66,12 +67,13 @@ LIVESPECTRUM_CONFIG = {
     'gui_width': 1200,  # Display window width in pixels
     'gui_height': 650,  # Display window height in pixels
     'max_freq': 5000,  # Maximum frequency to display in Hz
-    'dynamic_range': 40,  # Dynamic range in dB for amplitude display
+    'dynamic_range': 70,  # Dynamic range in dB for amplitude display
+    'gain_offset_db': -30.0,  # Default gain offset in dB
     'fps': 60,  # Frame rate for display refresh
     'chunk_ms': 15.0,  # Duration of each audio chunk in ms
     'number_of_chunks': 3,  # Number of chunks to form complete analysis window (15ms * 3 = 45ms)
     'padding_length_ms': 20.0,  # Zero-padding length in milliseconds for frequency resolution enhancement
-    'smoothing': 0.7,  # Exponential smoothing parameter (0=no smoothing, 1=full smoothing)
+    'smoothing': 0.7,  # Response factor alpha (1=no smoothing/instantaneous, 0=maximum smoothing/frozen)
 }
 
 # Analysis
@@ -87,7 +89,7 @@ ANALYSIS_CONFIG = {
     'max_f0': 500,  # Maximum f0 for analysis
     'min_confidence': 0.2,  # Minimum confidence threshold for accepting pitch estimates
     'min_rms_db': -60.0,  # Minimum RMS amplitude in dB for analysis
-    'formant_method': 'native',  # Formant analysis method: 'native', 'parselmouth', or 'custom'
+    'formant_method': 'native',  # Formant analysis method: 'native', 'wlp', 'parselmouth', or 'custom'
     'pitch_method': 'native',  # Pitch analysis method: 'native', 'parselmouth', or 'custom'
 }
 

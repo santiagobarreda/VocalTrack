@@ -282,7 +282,7 @@ These controls work across all four modes:
 
 1. **LiveVowel formant ranges**:
    - Default F1: 200-1200 Hz (good for most speakers)
-   - Default F2: 500-2700 Hz (good for most speakers)
+   - Default F2: 500-3000 Hz (good for most speakers)
    - Adjust if vowels appear off-screen or too clustered
 
 2. **LivePitch display window**:

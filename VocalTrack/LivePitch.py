@@ -149,6 +149,11 @@ class LivePitch(BaseAudioVisualizer):
 
         # Initialize default fonts to avoid recreating them on every frame (heavy OS lookup)
         self.default_font_18 = pygame.font.SysFont(None, 18)
+        self.default_font_24 = pygame.font.SysFont(None, 24)
+        self.default_font_32 = pygame.font.SysFont(None, 32)
+
+        # Cache for grid rendering
+        self.grid_surface = None
 
         logger.info("LivePitch initialized")
         self.run()
@@ -290,6 +295,8 @@ class LivePitch(BaseAudioVisualizer):
             # Update the configuration dictionary so other calculations stay accurate
             self.pitch_config['gui_width'] = self.GUI_WIDTH
             self.pitch_config['gui_height'] = self.GUI_HEIGHT
+            # Recreate cached grid surface on resize
+            self.grid_surface = None
         
         if self.event_holder and self.event_holder.quit is not None:  # Window close
             self.quit()  # Quit application
@@ -354,9 +361,12 @@ class LivePitch(BaseAudioVisualizer):
                 self.main_events()  # Handle input events
 
                 self.screen.fill(config.COLORS['white'])  # Clear background
+                if self.show_grid:
+                    if self.grid_surface is None:
+                        self.create_grid_surface()
+                    self.screen.blit(self.grid_surface, (0, 0))
                 self.run_points()  # Process audio and draw points
                 self.draw_min_rms_display()  # Draw min_rms_db value if recently changed
-                self._draw_grid()  # Draw optional grid overlay (toggle with 'g')
                 self._draw_help_overlay()  # Draw optional help overlay (toggle with 'h')
                 self.draw_performance_overlay()  # Draw performance diagnostics (toggle with 'p')
 
@@ -546,6 +556,28 @@ class LivePitch(BaseAudioVisualizer):
                 self.audio_processor.stop()  # Stop background audio thread cleanly
             # Save all buffered tracks to WAV and CSV files
             self.save(file_type='all')
+            
+            # Save current settings (like window size, min_rms_db) back to manager
+            try:
+                from . import settings_manager
+                mgr = settings_manager.get_settings_manager()
+                
+                # Save pitch plot settings
+                saved_pitch = mgr.get('pitch_plot', {})
+                saved_pitch['gui_width'] = self.screen.get_width()
+                saved_pitch['gui_height'] = self.screen.get_height()
+                mgr.set('pitch_plot', saved_pitch)
+                
+                # Save analysis settings
+                saved_analysis = mgr.get('analysis', {})
+                saved_analysis['min_rms_db'] = self.analysis_config.get('min_rms_db', -60.0)
+                mgr.set('analysis', saved_analysis)
+                
+                mgr.save()
+                logger.info("LivePitch settings saved successfully")
+            except Exception as save_err:
+                logger.error(f"Error saving LivePitch settings: {save_err}")
+
             pygame.quit()  # Shutdown pygame subsystem (closes window, releases display)
             logger.info("LivePitch shutdown complete")  # Log successful shutdown
         except Exception as e:  # Catch any errors during cleanup
@@ -701,39 +733,50 @@ class LivePitch(BaseAudioVisualizer):
             )
             logger.info(f"Pitch saved to {csv_file}")
 
-    def _draw_grid(self) -> None:
+    def create_grid_surface(self) -> None:
         """
-        Draw grid overlay with time and frequency labels for the pitch display.
-        Only drawn if show_grid is enabled.
+        Create a cached background surface containing the grid lines and axis labels.
+        Avoids recreating text surfaces on every single frame.
         """
-        if not self.show_grid:  # Only draw if enabled
-            return  # Skip grid drawing
+        self.grid_surface = pygame.Surface((self.GUI_WIDTH, self.GUI_HEIGHT), pygame.SRCALPHA)
+        self.grid_surface.fill((0, 0, 0, 0))
         
-        # Define visual styling for grid elements
         grid_color = (50, 50, 50)  # Dark gray for grid lines (subtle)
-        label_color = (100, 100, 100)  # Medium gray for label text (readable but not dominant)
-        font = self.default_font_18  # Use cached system font at 18pt for axis labels
+        label_color = (100, 100, 100)  # Medium gray for label text
+        font = self.default_font_18
         
         # Draw vertical time grid lines using calculated step
-        t = 0.0  # Start at time zero (right edge is most recent)
-        while t <= self.time_window_s + 1e-6:  # Loop through time axis (epsilon for floating-point tolerance)
-            x = int(self.GUI_WIDTH * (t / self.time_window_s))  # Convert time to horizontal pixel position
-            pygame.draw.line(self.screen, grid_color, (x, 0), (x, self.GUI_HEIGHT), 1)  # Draw vertical line from top to bottom
-            label = font.render(f"{int(t)}s", True, label_color)  # Create time label (e.g., "0s", "2s")
-            self.screen.blit(label, (x + 2, self.GUI_HEIGHT - 18))  # Draw label at bottom of line (slight offset)
-            t += self.time_step  # Move to next time grid line
+        t = 0.0
+        while t <= self.time_window_s + 1e-6:
+            x = int(self.GUI_WIDTH * (t / self.time_window_s))
+            pygame.draw.line(self.grid_surface, grid_color, (x, 0), (x, self.GUI_HEIGHT), 1)
+            label = font.render(f"{int(t)}s", True, label_color)
+            self.grid_surface.blit(label, (x + 2, self.GUI_HEIGHT - 18))
+            t += self.time_step
 
         # Draw horizontal frequency grid lines using calculated step
-        f0 = max(self.MIN_f0, 1.0)  # Start at minimum frequency (avoid log(0) issues)
-        while f0 <= self.MAX_f0 + 1e-6:  # Loop through frequency axis (epsilon for floating-point tolerance)
-            y = int(self.freq_to_y(f0))  # Convert frequency to vertical pixel position (respects log/linear scale)
-            pygame.draw.line(self.screen, grid_color, (0, y), (self.GUI_WIDTH, y), 1)  # Draw horizontal line across display
-            label = font.render(f"{int(f0)} Hz", True, label_color)  # Create frequency label (e.g., "100 Hz")
-            self.screen.blit(label, (4, y - 12))  # Draw label on left side of line (above line)
-            if getattr(self, 'freq_step_is_ratio', True):  # Check if using log scale (multiplicative steps)
-                f0 *= self.freq_step  # Log mode: multiply by ratio (e.g., 1.5 = musical fifth, 2.0 = octave)
-            else:  # Linear scale mode
-                f0 += self.freq_step  # Linear mode: add Hz value (e.g., +50 Hz)
+        f0 = max(self.MIN_f0, 1.0)
+        while f0 <= self.MAX_f0 + 1e-6:
+            y = int(self.freq_to_y(f0))
+            pygame.draw.line(self.grid_surface, grid_color, (0, y), (self.GUI_WIDTH, y), 1)
+            label = font.render(f"{int(f0)} Hz", True, label_color)
+            self.grid_surface.blit(label, (4, y - 12))
+            if getattr(self, 'freq_step_is_ratio', True):
+                f0 *= self.freq_step
+            else:
+                f0 += self.freq_step
+        
+        # Convert surface to match screen pixel format for optimized CPU blitting
+        self.grid_surface = self.grid_surface.convert_alpha()
+
+    def _draw_grid(self) -> None:
+        """
+        Draw grid overlay. Kept for backward compatibility.
+        """
+        if self.show_grid:
+            if self.grid_surface is None:
+                self.create_grid_surface()
+            self.screen.blit(self.grid_surface, (0, 0))
 
     def _draw_help_overlay(self) -> None:
         """
@@ -769,8 +812,8 @@ class LivePitch(BaseAudioVisualizer):
         ]  # End help text definition
         
         # Setup fonts for title and body text
-        font_title = pygame.font.Font(None, 32)  # Larger font for title (32pt)
-        font_text = pygame.font.Font(None, 24)  # Smaller font for shortcuts (24pt)
+        font_title = self.default_font_32  # Larger font for title (32pt)
+        font_text = self.default_font_24  # Smaller font for shortcuts (24pt)
         margin = 50  # Pixel margin from screen edges
         y = margin  # Starting vertical position (top margin)
         

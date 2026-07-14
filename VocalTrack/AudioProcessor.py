@@ -652,3 +652,11 @@ class AudioProcessor(QThread):
         """Return the current DSP window analysis rate per second."""
         self._update_rates()
         return self.current_analysis_rate
+
+    def get_analysis_queue_size(self):
+        """Return the current number of raw audio chunks waiting in the analysis queue."""
+        return self.raw_samples_queue.qsize()
+
+    def get_analysis_queue_maxsize(self):
+        """Return the maximum size of the analysis queue."""
+        return self.raw_samples_queue.maxsize

@@ -262,7 +262,7 @@ pip install praat-parselmouth
 
 1. **Widen formant ranges** (Formant Plot Settings):
    - F1: Increase upper bound (e.g., 200-1200 → 200-1500)
-   - F2: Increase upper/lower bounds (e.g., 500-2700 → 400-3000)
+   - F2: Increase upper/lower bounds (e.g., 500-3000 → 400-3500)
 
 2. **Check for speaker type**:
    - Child voices need higher formant ranges (F1: 250-1500, F2: 700-3500)

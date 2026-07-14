@@ -32,7 +32,7 @@ Accessed via "Analysis Settings" button in launcher. Controls core acoustic anal
 | `min_f0` | `60` | 40-200 Hz | Minimum f0 for pitch analysis and data filtering. Male: 60-80 Hz, female: 120-150 Hz, child: 180-200 Hz. |
 | `max_f0` | `500` | 200-800 Hz | Maximum f0 for pitch analysis and data filtering. Male: 200-300 Hz, female: 350-450 Hz, child: 400-600 Hz. |
 | `min_rms_db` | `-60.0` | -90 to -20 dB | Minimum RMS amplitude threshold in dBFS for analysis gating. More negative = capture quieter sounds. Less negative = filter out more noise. Adjustable during recording with `+`/`-` keys. |
-| `formant_method` | `'native'` | `'native'`, `'parselmouth'`, `'custom'` | Formant extraction backend. `native` = built-in LPC, `parselmouth` = Praat-based, `custom` = user-defined. |
+| `formant_method` | `'native'` | `'native'`, `'wlp'`, `'parselmouth'`, `'custom'` | Formant extraction backend. `native` = built-in LPC, `wlp` = Weighted Linear Prediction (WLP) with Short-Time Energy (STE) weighting, `parselmouth` = Praat-based, `custom` = user-defined. |
 | `pitch_method` | `'native'` | `'native'`, `'parselmouth'`, `'custom'` | Pitch extraction backend. `native` = built-in autocorrelation, `parselmouth` = Praat-based. |
 | `robust_formants` | `False` | True/False | (Formerly `robust`) Enable robust formant extraction logic. |
 | `window_length` | *Derived* | — | Analysis window duration in seconds. Auto-calculated: `window_length = (chunk_ms × number_of_chunks) / 1000`. Example: 20 ms × 3 = 0.06 s. |
@@ -63,6 +63,12 @@ Accessed via "Analysis Settings" button in launcher. Controls core acoustic anal
   - Function: `get_pitch_native()` in `VocalTrack/utils/get_pitch.py`
   - Strengths: Fast (<0.5 ms per frame), robust to pitch-halving errors via confidence weighting
   - Algorithm: Autocorrelation with parabolic interpolation and confidence-based voicing detection
+
+**WLP Methods** (recommended for high-pitch/nasalized speech):
+- **Formants**: Uses Weighted Linear Prediction (WLP) with Short-Time Energy (STE) weighting implemented in Python/NumPy
+  - Function: `get_formants_wlp()` in `VocalTrack/utils/get_formants.py`
+  - Strengths: Highly robust to high pitch ($F_0$) and nasalization. De-emphasizes low-energy signal regions to avoid glottal open-phase excitation contamination. Fast (<2 ms per frame) and has no external dependencies.
+  - Algorithm: WLP covariance formulation solved via normal equations with a short-time energy (1.5 ms window) weight vector.
 
 **Parselmouth Methods** (for benchmarking and validation):
 - **Formants**: Delegates to Praat's formant extraction via Parselmouth library
@@ -99,19 +105,104 @@ Accessed via "Smoother Settings" button in launcher. Controls the 1-Euro filter 
 | `euro_dcutoff` | `0.5` | 0.1-2.0 Hz | 1-Euro filter cutoff for derivative (velocity) smoothing. Lower = smoother velocity estimates. |
 | `velocity_power` | `1.5` | 0.5-3.0 | Exponent for non-linear velocity influence. >1 = snap quickly to fast changes, <1 = linear response. |
 
-**1-Euro Filter:**
+## Detailed 1-Euro Filter Explanation
 
-The 1-Euro filter is an adaptive low-pass filter that automatically adjusts smoothing based on signal velocity:
+The 1-Euro filter is an adaptive first-order low-pass filter (exponential moving average) designed specifically for real-time tracking systems to address the classic tradeoff between noise reduction (smoothing) and responsiveness (latency). It was proposed by Casiez, Roussel, and Vogel (2012) and is widely used for filtering raw human-computer interaction inputs (e.g., in Google's MediaPipe framework).
 
-- **Slow changes**: Heavy smoothing (low cutoff = more filtering)
-- **Fast changes**: Light smoothing (high cutoff = less filtering)
+### How it Works (Under the Hood)
 
-**Tuning guide:**
+For any real-time tracking stream, we want to smooth out high-frequency jitter when the tracked value (formants or pitch) is relatively stationary, but we want the filter to quickly "let go" and track the signal closely with minimal delay when the speaker makes a rapid articulatory transition (such as a diphthong or a pitch glide). To achieve this, the 1-Euro filter dynamically adapts its smoothing cutoff frequency based on the **velocity (rate of change)** of the input signal.
 
-1. **Too jittery (noisy tracking)**:
-   - Increase `memory_n` (3 → 5)
-   - Decrease `euro_min_cutoff` (0.05 → 0.02)
-   - Decrease `euro_beta` (1.5 → 1.0)
+### Step-by-Step Algorithm & Math
+
+Let $X$ represent the input coordinate sequence (formant or pitch in log-space) and $dt$ represent the time delta between consecutive samples.
+
+#### 1. Dynamic Time Delta Calculation ($dt$)
+In a real-time system, frames can occasionally be dropped or skipped if they are unvoiced or fail the stability gate. Rather than assuming a constant time step, VocalTrack dynamically adjusts the time delta $dt$ at each step:
+
+$$
+dt = dt_{\text{base}} + (dt_{\text{base}} \times \text{skipped\_frames})
+$$
+
+where $dt_{\text{base}} = \frac{\text{chunk\_ms}}{1000}$ (e.g., $0.02$ seconds for a $20$ ms chunk).
+
+#### 2. Compute Raw Velocity ($dx_i$)
+At each time step $i$, the raw rate of change is calculated as the difference between the new input value $x_i$ and the previously filtered value $\hat{x}_{i-1}$, divided by the time elapsed:
+$$
+dx_i = \frac{x_i - \hat{x}_{i-1}}{dt}$$
+
+#### 3. Smooth the Velocity ($\hat{dx}_i$)
+Because raw velocity measurements are highly susceptible to noise (which could cause the cutoff frequency to fluctuate erratically), the velocity itself is low-pass filtered using a fixed cutoff frequency $f_{c, d}$ (`euro_dcutoff`):
+$$
+    \alpha_d = \frac{1}{1 + \frac{\tau_d}{dt}}
+    \text{where} \quad \tau_d = \frac{1}{2 \pi \cdot f_{c, d}}
+$$
+$$
+    \hat{dx}_i = \alpha_d \cdot dx_i + (1 - \alpha_d) \cdot \hat{dx}_{i-1}
+$$
+
+#### 4. Calculate the Adaptive Cutoff Frequency ($f_c$)
+
+The cutoff frequency $f_c$ for the primary signal is computed as a function of the smoothed velocity magnitude $|\hat{dx}_i|$:
+
+$$f_c = f_{c, \min} + \beta \cdot |\hat{dx}_i|^{\text{power}}$$
+
+* $f_{c, \min}$ (`euro_min_cutoff`) is the baseline cutoff frequency when the signal is stationary.
+* $\beta$ (`euro_beta`) is the speed coefficient.
+* `power` (`velocity_power`) is a scaling exponent (default: $1.5$). By raising the velocity to a power $>1.0$, the filter reacts exponentially faster to rapid movements.
+* A safety bound ensures $f_c$ never drops to zero: $f_c = \max(10^{-6}, f_c)$.
+
+#### 5. Smooth the Main Signal ($\hat{x}_i$)
+
+The main smoothing coefficient $\alpha$ is dynamically computed from the adaptive cutoff frequency $f_c$:
+
+$$
+    \alpha = \frac{1}{1 + \frac{\tau}{dt}}
+    \quad \text{where} \quad
+    \tau = \frac{1}{2 \pi \cdot f_c}
+$$
+
+And the final filtered output value $\hat{x}_i$ is blended:
+$$
+    \hat{x}_i = \alpha \cdot x_i + (1 - \alpha) \cdot \hat{x}_{i-1}
+$$
+
+### Parameter Breakdown
+
+| Parameter | Math Symbol | Role in Filtering | Visual Behavior |
+|-----------|-------------|-------------------|-----------------|
+| `euro_min_cutoff` | $f_{c, \min}$ | Baseline cutoff frequency (Hz) at zero speed. | **Lower values** (e.g., $0.01 - 0.05$) create heavy smoothing and suppress steady-state jitter, but can introduce minor delay when starting a sound. **Higher values** (e.g., $0.1 - 0.5$) reduce steady-state smoothing. |
+| `euro_beta` | $\beta$ | Speed coefficient multiplier. | Controls how quickly the filter "opens up" (increases cutoff frequency) in response to velocity. **Higher values** (e.g., $1.5 - 2.0$) eliminate lag during rapid transitions but may allow more noise through. |
+| `euro_dcutoff` | $f_{c, d}$ | Velocity smoothing cutoff frequency (Hz). | Prevents rapid raw velocity noise from destabilizing the adaptive cutoff. A value of $0.5$ Hz ensures stable transitions. |
+| `velocity_power` | $\text{power}$ | Exponential scaling of velocity magnitude. | Controls the snap responsiveness. Values $>1.0$ (e.g., $1.5$) ensure that slow drift remains heavily filtered while rapid movements snap instantly to target frequencies. |
+
+#### Tuning Guide for 1-Euro Filter Parameters
+
+This guide helps you adjust the 1-Euro filter parameters to balance noise reduction and responsiveness for formant tracking.
+
+**1. If tracking is too jittery (noisy):**
+
+* **Increase `memory_n`**: Use 3 to 5 (default is 3). This increases the number of past frames used in the initial average, reducing high-frequency noise.
+* **Decrease `euro_min_cutoff`**: Set to $0.02$ (default is 0.05). A lower baseline cutoff reduces jitter during stationary speech.
+* **Decrease `euro_beta`**: Set to 1.0 (default is 1.5). A smaller speed coefficient reduces responsiveness to small movements, which can be noisy.
+
+**2. If tracking is too sluggish (slow to respond):**
+
+* **Decrease `memory_n`**: Set to 2 (default is 3). Reduces the number of frames in the initial average, increasing responsiveness.
+* **Increase `euro_min_cutoff`**: Set to 0.1 (default is 0.05). A higher baseline cutoff allows faster tracking of value changes.
+* **Increase `euro_beta`**: Set to 2.0 (default is 1.5). A larger speed coefficient makes the filter react more quickly to velocity changes.
+
+**3. If formants jump between tracks:**
+
+* **Increase `stability_threshold`**: Set to 0.25 (default is 0.15). Requires a stronger formant signal before switching tracks.
+* **Decrease `skip_tolerance`**: Set to 1 (default is 2). Reduces how many frames can be skipped before switching tracks, keeping the filter tied to the current formant.
+* **Decrease `stability_threshold`**: Set to 0.10 (default is 0.15). Lowers the threshold to switch tracks more easily when the formant is detected.
+
+**4. If tracks break during normal speech:**
+
+* **Set `hold_unvoiced = True`**: This keeps the last valid formant value when the signal is unvoiced (no sound detected).
+* **Increase `skip_tolerance`**: Set to 3 (default is 2). Allows more skipped frames before declaring the formant lost.
+* **Decrease `stability_threshold`**: Set to 0.10 (default is 0.15). Makes it easier to regain a track after a brief interruption.
 
 2. **Too sluggish (slow response)**:
    - Decrease `memory_n` (3 → 2)
@@ -136,7 +227,7 @@ Accessed via "Formant Plot Settings" button in launcher. Controls LiveVowel disp
 | Parameter | Default | Range | Description |
 |-----------|---------|-------|-------------|
 | `f1_range` | `(200, 1200)` | (100, 1500) Hz | Vertical axis range for F1 formant. Lower values at top (inverted axis). Typical: 200-1200 Hz for adults. |
-| `f2_range` | `(500, 2700)` | (300, 3500) Hz | Horizontal axis range for F2 formant. Higher values at left (inverted axis). Typical: 500-2700 Hz for adults. |
+| `f2_range` | `(500, 3000)` | (300, 3500) Hz | Horizontal axis range for F2 formant. Higher values at left (inverted axis). Typical: 500-3000 Hz for adults. |
 | `fps` | `60` | 15-120 | Frame rate for display refresh. Higher = smoother but more CPU. Typical: 30-60 fps. |
 | `display_mode` | `'single'` | `'single'`, `'track'`, `'all'` | Visualization mode. `single` = latest point only, `track` = current trajectory, `all` = all trajectories. |
 | `freq_scale` | `'log'` | `'log'`, `'linear'` | Frequency axis scaling. `log` = logarithmic (perceptually uniform), `linear` = linear Hz. |
@@ -147,14 +238,14 @@ Accessed via "Formant Plot Settings" button in launcher. Controls LiveVowel disp
 
 **Adult speakers:**
 - F1: 200-1200 Hz (covers /i/ to /a/)
-- F2: 500-2700 Hz (covers /u/ to /i/)
+- F2: 500-3000 Hz (covers /u/ to /i/)
 
 **Child speakers:**
 - F1: 250-1500 Hz
 - F2: 700-3500 Hz
 
 **Narrow ranges for specific vowels:**
-- Front vowels only: F1: 200-600 Hz, F2: 1500-2700 Hz
+- Front vowels only: F1: 200-600 Hz, F2: 1500-3000 Hz
 - Back vowels only: F1: 300-1200 Hz, F2: 500-1500 Hz
 
 **Frequency scale:**
@@ -197,7 +288,7 @@ You can have different ranges. For example:
 - Medium (5-7 s): Default, good for sentences
 - Long (10-20 s): Extended context, slower scrolling
 
----
+
 
 ## Spectrogram Settings (LiveSpectrogram)
 
@@ -258,21 +349,21 @@ Accessed via "Spectrum Settings" button in launcher. Controls LiveSpectrum displ
 | `chunk_ms` | `15.0` | 5-50 ms | Duration of each audio chunk for FFT analysis. |
 | `number_of_chunks` | `3` | 1-10 | Number of chunks combined into analysis window (15 ms × 3 = 45 ms). |
 | `padding_length_ms` | `20.0` | 0-100 ms | Zero-padding duration for FFT. Increases frequency bin density (smoother spectrum line). |
-| `smoothing` | `0.7` | 0.0-1.0 | Exponential smoothing parameter for temporal averaging. 0 = no smoothing (jittery), 1 = full smoothing (very slow). Typical: 0.5-0.8. |
+| `smoothing` | `0.7` | 0.0-1.0 | Response factor (alpha) for exponential smoothing. 1.0 = no smoothing (instantaneous), 0.0 = maximum smoothing (frozen). Typical: 0.5-0.8. |
 
 **Smoothing parameter:**
 
 Controls temporal averaging of spectrum across frames:
 
 ```
-new_spectrum = (smoothing × old_spectrum) + ((1 - smoothing) × current_spectrum)
+new_spectrum = (smoothing × current_spectrum) + ((1 - smoothing) × old_spectrum)
 ```
 
-- `0.0`: No smoothing, instantaneous spectrum (very jittery)
-- `0.5`: Moderate smoothing, responsive
+- `1.0`: No smoothing, instantaneous spectrum (very jittery)
 - `0.7`: Default, balanced stability and responsiveness
-- `0.9`: Heavy smoothing, very stable but slow
-- `1.0`: Full smoothing, frozen (no updates)
+- `0.5`: Moderate smoothing, slightly slower response
+- `0.3`: Heavy smoothing, very stable but slow
+- `0.0`: Maximum smoothing, frozen (no updates)
 
 **FFT parameters:**
 
@@ -466,7 +557,7 @@ Edit `.VocalTrack_settings.json` in a text editor and remove specific sections o
 
 **Task: Optimize for female voice**
 - Analysis Settings: `min_f0=120`, `max_f0=400`, `max_formant=5500`
-- Formant Plot: `f1_range=(200, 1200)`, `f2_range=(700, 2700)`
+- Formant Plot: `f1_range=(200, 1200)`, `f2_range=(700, 3000)`
 - Pitch Plot: `min_f0=100`, `max_f0=400`
 
 **Task: Optimize for child voice**

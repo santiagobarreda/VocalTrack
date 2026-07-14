@@ -152,6 +152,9 @@ class LiveVowel(BaseAudioVisualizer):
         self.min_rms_display_text = ""  # Text to display ("Min RMS: XX dB")
         self.min_rms_display_until = 0  # Timestamp when display should disappear
         
+         # Cache for grid rendering
+        self.grid_surface = None
+
         # Start the main event loop (blocking call)
         self.run()
 
@@ -187,7 +190,9 @@ class LiveVowel(BaseAudioVisualizer):
                 
                 # Draw grid if enabled (toggle with 'g')
                 if self.show_grid:
-                    self.draw_grid()
+                    if self.grid_surface is None:
+                        self.create_grid_surface()
+                    self.screen.blit(self.grid_surface, (0, 0))
     
                 # Process audio and render formant points
                 # This is the core visualization - captures audio, analyzes formants, plots points
@@ -470,6 +475,8 @@ class LiveVowel(BaseAudioVisualizer):
                 if textbox.f1 is not None and textbox.f2 is not None:
                     new_x, new_y = self.ipalabels._hz_to_pixels(textbox.f1, textbox.f2)
                     textbox.rect.center = (new_x, new_y)
+            # Recreate cached grid surface on scale toggle
+            self.grid_surface = None
         # Handles +/- keys to adjust minimum RMS threshold
         if self.event_holder.plus_equals:
             self.adjust_min_rms(+3)  # Increase minimum RMS threshold by 3 dB
@@ -488,6 +495,8 @@ class LiveVowel(BaseAudioVisualizer):
                                          new_size[0], new_size[1])
             # Update configuration with new window size
             self.gui_info['gui_size'] = new_size
+            # Recreate cached grid surface on resize
+            self.grid_surface = None
 
         # Ctrl+V toggles the IPA vowel picker on/off.
         # Opening the picker also stops any active recording as a side-effect.
@@ -595,9 +604,9 @@ class LiveVowel(BaseAudioVisualizer):
         Returns:
             tuple: (x, y) screen coordinates in pixels
         """
-        # Extract F1 axis range from configuration (e.g., 200-1100 Hz)
+        # Extract F1 axis range from configuration (e.g., 200-1200 Hz)
         f1_min, f1_max = gui_info['f1_range']
-        # Extract F2 axis range from configuration (e.g., 500-2700 Hz)
+        # Extract F2 axis range from configuration (e.g., 500-3000 Hz)
         f2_min, f2_max = gui_info['f2_range']
         # Extract window dimensions in pixels
         gui_width, gui_height = gui_info['gui_size']
@@ -707,8 +716,11 @@ class LiveVowel(BaseAudioVisualizer):
 
     def draw_mode_status(self):
         """Draw top-left mode status to make recording state explicit."""
+        if self.recording_active:
+            return  # Skip status overlay when recording (screen color indicates state)
+            
         font = self.font_20
-        rec_str = "RECORDING" if self.recording_active else "idle"
+        rec_str = "idle"
         pick_str = " | picker ON" if self.state == "menu" else ""
         mode_text = f"Mode: {rec_str}{pick_str}"
         text_surface = font.render(mode_text, True, (255, 255, 255))
@@ -777,10 +789,14 @@ class LiveVowel(BaseAudioVisualizer):
             # Blit text onto background
             self.screen.blit(display_text, (10, 10))
 
-    def draw_grid(self):
-        """Draw F1/F2 grid lines on the vowel space."""
-        f1_range = self.gui_info.get('f1_range', (200, 1100))
-        f2_range = self.gui_info.get('f2_range', (500, 2700))
+    def create_grid_surface(self):
+        """Create a cached background surface containing the grid lines and F1/F2 labels."""
+        gui_width, gui_height = self.gui_info['gui_size']
+        self.grid_surface = pygame.Surface((gui_width, gui_height), pygame.SRCALPHA)
+        self.grid_surface.fill((0, 0, 0, 0))
+        
+        f1_range = self.gui_info.get('f1_range', (200, 1200))
+        f2_range = self.gui_info.get('f2_range', (500, 3000))
         
         grid_color = (200, 200, 200)  # Light gray grid lines
         label_color = (120, 120, 120)  # Gray text for labels
@@ -792,10 +808,10 @@ class LiveVowel(BaseAudioVisualizer):
         while f1_current <= f1_range[1]:
             # Convert F1 frequency to screen position
             x, y = self.point_coordinates(self.gui_info, f1_current, (f2_range[0] + f2_range[1]) / 2)
-            pygame.draw.line(self.screen, grid_color, (0, y), (self.gui_info['gui_size'][0], y), 1)
+            pygame.draw.line(self.grid_surface, grid_color, (0, y), (gui_width, y), 1)
             # Draw F1 label
             label = font.render(f"F1:{int(f1_current)}", True, label_color)
-            self.screen.blit(label, (5, y - 8))
+            self.grid_surface.blit(label, (5, y - 8))
             f1_current += f1_step
         
         # Draw F2 grid lines (vertical reference lines)
@@ -804,14 +820,24 @@ class LiveVowel(BaseAudioVisualizer):
         while f2_current <= f2_range[1]:
             # Convert F2 frequency to screen position
             x, y = self.point_coordinates(self.gui_info, (f1_range[0] + f1_range[1]) / 2, f2_current)
-            pygame.draw.line(self.screen, grid_color, (x, 0), (x, self.gui_info['gui_size'][1]), 1)
+            pygame.draw.line(self.grid_surface, grid_color, (x, 0), (x, gui_height), 1)
             # Draw F2 label
             label = font.render(f"{int(f2_current)}", True, label_color)
             label_rect = label.get_rect()
             label_rect.centerx = x
-            label_rect.top = self.gui_info['gui_size'][1] - 20
-            self.screen.blit(label, label_rect)
+            label_rect.top = gui_height - 20
+            self.grid_surface.blit(label, label_rect)
             f2_current += f2_step
+            
+        # Convert surface to match screen pixel format for optimized CPU blitting
+        self.grid_surface = self.grid_surface.convert_alpha()
+
+    def draw_grid(self):
+        """Draw F1/F2 grid lines. Kept for backward compatibility."""
+        if self.show_grid:
+            if self.grid_surface is None:
+                self.create_grid_surface()
+            self.screen.blit(self.grid_surface, (0, 0))
 
     def draw_help_overlay(self):
         """Draw help overlay showing available controls."""
@@ -914,6 +940,27 @@ class LiveVowel(BaseAudioVisualizer):
             if self.original_audio_buffer or self.downsampled_audio_buffer or self.formant_log:
                 logger.info(f"Exporting session: {self.session_name}")
                 self.save(file_type='all')
+
+            # Save current settings (like window size, freq scale, min_rms_db) back to manager
+            try:
+                from . import settings_manager
+                mgr = settings_manager.get_settings_manager()
+                
+                # Save plotting settings
+                saved_plotting = mgr.get('plotting', {})
+                saved_plotting['freq_scale'] = self.freq_scale
+                saved_plotting['gui_size'] = list(self.gui_info.get('gui_size', [self.screen.get_width(), self.screen.get_height()]))
+                mgr.set('plotting', saved_plotting)
+                
+                # Save analysis settings
+                saved_analysis = mgr.get('analysis', {})
+                saved_analysis['min_rms_db'] = self.analysis_config.get('min_rms_db', -60.0)
+                mgr.set('analysis', saved_analysis)
+                
+                mgr.save()
+                logger.info("LiveVowel settings saved successfully")
+            except Exception as save_err:
+                logger.error(f"Error saving LiveVowel settings: {save_err}")
 
             pygame.quit()
             logger.info("LiveVowel shutdown complete")

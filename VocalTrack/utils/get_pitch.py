@@ -31,8 +31,10 @@ def get_pitch(signal, sample_rate, method=None, **kwargs):
     if method == 'parselmouth':
         return get_pitch_parselmouth(signal, sample_rate, **kwargs)
     elif method == 'custom':
+        kwargs.pop('parselmouth_sound', None)
         return get_pitch_custom(signal, sample_rate, **kwargs)
     else:
+        kwargs.pop('parselmouth_sound', None)
         return get_pitch_native(signal, sample_rate, **kwargs)
 
 
@@ -188,7 +190,8 @@ def get_pitch_parselmouth(signal: np.ndarray,
                min_f0: int = 75,
                max_f0: int = 500,
                min_rms_db: float = -60.0,
-               min_confidence: float = 0.2) -> Dict:
+               min_confidence: float = 0.2,
+               parselmouth_sound=None) -> Dict:
     """
     Estimate pitch (f0) and voicing for a short audio signal window using Parselmouth.
 
@@ -206,6 +209,8 @@ def get_pitch_parselmouth(signal: np.ndarray,
         Minimum RMS dB threshold for voiced decision (default: -60.0).
     min_confidence : float, optional
         MUnused, for API consistency.
+    parselmouth_sound : parselmouth.Sound, optional
+        Pre-allocated Parselmouth Sound object to reuse.
     Returns
     -------
     dict
@@ -235,7 +240,7 @@ def get_pitch_parselmouth(signal: np.ndarray,
 
     # Use Parselmouth/Praat for pitch tracking
     try:
-        snd = parselmouth.Sound(sig, sampling_frequency=sample_rate)
+        snd = parselmouth_sound if parselmouth_sound is not None else parselmouth.Sound(sig, sampling_frequency=sample_rate)
         pitch_obj = snd.to_pitch_ac(time_step=0.01, pitch_floor=min_f0, pitch_ceiling=max_f0)
         mean_f0 = parselmouth.praat.call(pitch_obj, 'Get mean', 0, 0, 'Hertz')
 

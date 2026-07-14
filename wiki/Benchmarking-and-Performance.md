@@ -108,10 +108,10 @@ The overlay displays five key metrics in a semi-transparent panel:
    - **Target**: Should match the expected Audio In capture rate (e.g., **50.0 win/s** for a 20ms chunk).
    - **Performance Diagnostic**: If this rate falls behind, the DSP algorithms (native LPC/autocorrelation, or Parselmouth/Praat) are taking longer to compute than the chunk duration. This causes the input queues to overflow and drop frames.
 
-4. **Queue (Batch Pileup)**:
-   - **What it is**: The number of analyzed windows processed in the current GUI frame.
-   - **Calculation**: Measured in the main thread when draining the `analyzed_sounds_queue` via non-blocking `get_nowait()`.
-   - **Performance Diagnostic**: In a healthy, low-latency state, this should be **0 or 1** (meaning every audio window is processed and drawn immediately). If the GUI thread lags or frame rate drops, audio windows will stack up in the queue, resulting in a pileup of 2+ windows which are drawn all at once, leading to visual stuttering.
+4. **Queue (Analysis Backlog)**:
+   - **What it is**: The number of raw audio chunks currently backlogged in the input queue waiting to be processed by the background analysis thread.
+   - **Calculation**: Derived using `.qsize()` on the `raw_samples_queue` in `AudioProcessor.py`.
+   - **Performance Diagnostic**: In a healthy state, this should be **0 to 5** chunks. If the queue size increases toward the maximum capacity (e.g., 50 chunks), the background analysis algorithms (LPC/autocorrelation, or Parselmouth/Praat) are taking longer to run than the audio chunk duration. This serves as an early warning of a DSP processing bottleneck before the queue overflows and starts dropping frames.
 
 5. **Throughput Percentages**:
    - Each rate displays a percentage indicator in parentheses (e.g., `(99.67%)`), calculated as:
@@ -123,4 +123,4 @@ To make diagnostics quick and intuitive, the text colors of the overlay change d
 - **Green** ($\ge 90\%$ of target): Healthy operation. The pipeline is running smoothly with minimal latency.
 - **Yellow** ($75\%$ to $90\%$ of target): Warning. The system is dropping frames or chunks slightly (minor processing delays).
 - **Red** ($< 75\%$ of target): Critical bottleneck. The app is experiencing significant lag, buffer drops, or thread thrashes.
-- **Queue Count Warning**: The `Queue` line shows **Green** for 0–1 windows, **Yellow** for 2–3 windows, and **Red** for 4+ windows (pileups).
+- **Queue Count Warning**: The `Queue` line shows **Green** for 0–5 chunks, **Yellow** for 6–25 chunks, and **Red** for 26+ chunks (pileups backlogged in the analysis queue).

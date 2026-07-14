@@ -322,10 +322,10 @@ class IPALabels:
         screen_height = self.screen.get_height()
         
         # Default ranges if not specified
-        # Get F1 display range (default 200-1100 Hz for adult vowel space)
-        f1_range = self.gui_info.get('f1_range', [200, 1100])
-        # Get F2 display range (default 500-2700 Hz for adult vowel space)
-        f2_range = self.gui_info.get('f2_range', [500, 2700])
+        # Get F1 display range (default 200-1200 Hz for adult vowel space)
+        f1_range = self.gui_info.get('f1_range', [200, 1200])
+        # Get F2 display range (default 500-3000 Hz for adult vowel space)
+        f2_range = self.gui_info.get('f2_range', [500, 3000])
         
         # Check if using logarithmic frequency scale (default for vowel plots)
         use_log = self.gui_info.get('freq_scale', 'linear') == 'log'
@@ -387,10 +387,10 @@ class IPALabels:
         screen_width = self.screen.get_width()
         # Get window height
         screen_height = self.screen.get_height()
-        # Get F1 display range from config (default 200-1100 Hz)
-        f1_range = self.gui_info.get('f1_range', [200, 1100])
-        # Get F2 display range from config (default 500-2700 Hz)
-        f2_range = self.gui_info.get('f2_range', [500, 2700])
+        # Get F1 display range from config (default 200-1200 Hz)
+        f1_range = self.gui_info.get('f1_range', [200, 1200])
+        # Get F2 display range from config (default 500-3000 Hz)
+        f2_range = self.gui_info.get('f2_range', [500, 3000])
 
         # Calculate normalized position ratios (0.0 to 1.0)
         # Normalize x to 0-1 range (prevent divide by zero)

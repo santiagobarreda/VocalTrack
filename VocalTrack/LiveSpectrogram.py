@@ -140,7 +140,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
         # Store dynamic range in dB for frequency axis amplitude clipping (controls contrast)
         self.dynamic_range = self.spec_config['dynamic_range']
         # Store gain in dB for amplitude scaling (controls overall brightness)
-        self.gain_db = 0.0
+        self.gain_db = float(self.spec_config.get('gain_db', 0.0))
         
         # Update sample_rate based on max_freq (Nyquist: need 2× max frequency)
         # This overwrites any sample rate from audio_config to ensure correct sampling
@@ -175,7 +175,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
         
         # Create pygame surface for scrolling spectrogram display
         # This surface holds the entire spectrogram history visible on screen
-        self.spec_surface = pygame.Surface((self.GUI_WIDTH, self.GUI_HEIGHT))
+        self.spec_surface = pygame.Surface((self.GUI_WIDTH, self.GUI_HEIGHT)).convert()
         # Initialize display with black background to avoid artifacts
         self.spec_surface.fill((0, 0, 0))
         
@@ -190,6 +190,10 @@ class LiveSpectrogram(BaseAudioVisualizer):
         self.column_width = int(round(self.pixels_per_second * time_per_column))
         # Ensure at least 1 pixel width
         self.column_width = max(self.column_width, 1)
+        
+        # Pre-calculate frequency-to-pixel Y coordinate index mapping to save CPU on every frame
+        num_bins = self.nfft // 2 + 1
+        self.y_indices = (np.arange(self.GUI_HEIGHT) / self.GUI_HEIGHT * num_bins).astype(np.int32)
         
         # Recording state management
         self.keep_running = True  # Main loop control flag
@@ -270,10 +274,8 @@ class LiveSpectrogram(BaseAudioVisualizer):
         # Map normalized magnitudes to RGB colors via local lookup table.
         colors = self.colormap_table[magnitude_normalized]
 
-        # Map y-coordinate to spectral index (frequency bin index)
-        y_indices = (np.arange(self.GUI_HEIGHT) / self.GUI_HEIGHT * len(colors)).astype(np.int32)
-        np.clip(y_indices, 0, len(colors) - 1, out=y_indices)
-        column_colors = colors[y_indices, :3]  # shape (GUI_HEIGHT, 3)
+        # Map y-coordinate to spectral index using pre-calculated mapping
+        column_colors = colors[self.y_indices, :3]  # shape (GUI_HEIGHT, 3)
 
         # Create 2D array of shape (width, GUI_HEIGHT, 3) representing the column
         # Pygame's surfarray expects (X, Y) layout: (width, height, 3)
@@ -457,6 +459,9 @@ class LiveSpectrogram(BaseAudioVisualizer):
         gain adjustment (Ctrl+/Ctrl-), help overlay toggle (Ctrl+?),
         and window resize events. Updates display state accordingly.
         """
+        # Call base class event handler to handle global visualizer controls (Ctrl+G, Ctrl+H, Ctrl+P, ESC, Backspace, Delete)
+        if not self.handle_base_events(self.event_holder):
+            return
         
         # Handle window resize events
         if self.event_holder.resize is not None:
@@ -470,7 +475,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
                 self.screen = pygame.display.set_mode((self.GUI_WIDTH, self.GUI_HEIGHT), pygame.RESIZABLE)
                 # Recreate spectrogram surface with new dimensions
                 old_surface = self.spec_surface
-                self.spec_surface = pygame.Surface((self.GUI_WIDTH, self.GUI_HEIGHT))
+                self.spec_surface = pygame.Surface((self.GUI_WIDTH, self.GUI_HEIGHT)).convert()
                 self.spec_surface.fill((0, 0, 0))
                 # Copy old spectrogram data, scaled to fit new dimensions
                 if old_surface:
@@ -483,13 +488,9 @@ class LiveSpectrogram(BaseAudioVisualizer):
                 time_per_column = self.chunk_ms / 1000.0
                 self.column_width = int(round(self.pixels_per_second * time_per_column))
                 self.column_width = max(self.column_width, 1)
-        
-     
-        # Check for window close or ESC key (both trigger shutdown)
-        if self.event_holder.quit or self.event_holder.escape:
-            # Stop main loop and begin cleanup
-            self.quit()
-            return
+                # Recalculate pre-calculated y_indices for the new height
+                num_bins = self.nfft // 2 + 1
+                self.y_indices = (np.arange(self.GUI_HEIGHT) / self.GUI_HEIGHT * num_bins).astype(np.int32)
         
         # DYNAMIC RANGE ADJUSTMENT WITH +/- KEYS
         # + key reduces dynamic range (fewer dB displayed = more detail, less contrast)
@@ -518,11 +519,6 @@ class LiveSpectrogram(BaseAudioVisualizer):
             self.gain_db = max(self.gain_db - 5, 0)
             # Log the new gain setting to console for user feedback
             logger.info(f"Gain: {self.gain_db} dB")
-        
-        # Ctrl+? toggles the help overlay display
-        if self.event_holder.ctrl_h:
-            self.show_help = not self.show_help
-            logger.info(f"Help overlay: {'ON' if self.show_help else 'OFF'}")
 
     def export_recording(self):
         """Export recorded audio to WAV file.
@@ -600,8 +596,8 @@ class LiveSpectrogram(BaseAudioVisualizer):
         
         The loop runs until user presses ESC/closes window.
         """
-        # Get FPS from config or default to 60 if not set
-        clock = pygame.time.Clock()
+        # Use parent class clock for frame rate limiting and performance monitoring
+        clock = self.clock
 
         # MAIN LOOP: Continues until keep_running flag is set False
         try:
@@ -678,6 +674,19 @@ class LiveSpectrogram(BaseAudioVisualizer):
                 pygame.display.flip()
         finally:
             # CLEANUP AFTER MAIN LOOP EXITS
+            try:
+                from . import settings_manager
+                mgr = settings_manager.get_settings_manager()
+                saved = mgr.get('spectrogram', {})
+                saved['gain_db'] = self.gain_db
+                saved['gui_width'] = self.screen.get_width()
+                saved['gui_height'] = self.screen.get_height()
+                mgr.set('spectrogram', saved)
+                mgr.save()
+                logger.info("LiveSpectrogram settings saved successfully")
+            except Exception as save_err:
+                logger.error(f"Error saving LiveSpectrogram settings: {save_err}")
+
             if self.audio_processor:
                 self.audio_processor.stop()
             pygame.quit()

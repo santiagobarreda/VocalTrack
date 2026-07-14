@@ -154,8 +154,8 @@ class AnalysisSettingsDialog(BaseSettingsDialog):
 
         # Create a dropdown menu to let the user pick which math engine calculates formants
         self.formant_method_combo = QComboBox()
-        # Put three choices into the dropdown list
-        self.formant_method_combo.addItems(["native", "parselmouth", "custom"])
+        # Put choices into the dropdown list
+        self.formant_method_combo.addItems(["native", "wlp", "parselmouth", "custom"])
         # Figure out which one they were using last time
         current_formant = saved.get('formant_method', config.ANALYSIS_CONFIG.get('formant_method', 'native'))
         # Find where that choice lives in our list (is it item 0, 1, or 2?)
@@ -342,8 +342,8 @@ class PlottingSettingsDialog(BaseSettingsDialog):
         
         # Fetch the previously saved limits for the graph, or use defaults
         # F1 is usually the vertical axis, F2 is usually the horizontal axis
-        default_f1 = saved.get('f1_range', config.LIVEVOWEL_CONFIG.get('f1_range', (200.0, 1100.0)))
-        default_f2 = saved.get('f2_range', config.LIVEVOWEL_CONFIG.get('f2_range', (500.0, 2700.0)))
+        default_f1 = saved.get('f1_range', config.LIVEVOWEL_CONFIG.get('f1_range', (200.0, 1200.0)))
+        default_f2 = saved.get('f2_range', config.LIVEVOWEL_CONFIG.get('f2_range', (500.0, 3000.0)))
         
         # Create text box for the bottom limit of the F1 axis. Extract the first number from the saved pair [0].
         self.f1_min_input = QLineEdit(str(int(default_f1[0])))
@@ -407,9 +407,9 @@ class PlottingSettingsDialog(BaseSettingsDialog):
         scales = ["log", "linear"]
         return {
             # Package the two F1 text boxes together as a pair (tuple) of decimal numbers
-            'f1_range': (safe_float(self.f1_min_input.text(), 200.0), safe_float(self.f1_max_input.text(), 1100.0)),
+            'f1_range': (safe_float(self.f1_min_input.text(), 200.0), safe_float(self.f1_max_input.text(), 1200.0)),
             # Package the two F2 text boxes together as a pair
-            'f2_range': (safe_float(self.f2_min_input.text(), 500.0), safe_float(self.f2_max_input.text(), 2700.0)),
+            'f2_range': (safe_float(self.f2_min_input.text(), 500.0), safe_float(self.f2_max_input.text(), 3000.0)),
             # Convert FPS to a whole number
             'fps': safe_int(self.fps_input.text(), 60),
             # Look up the code word based on which dropdown item the user clicked
@@ -561,6 +561,11 @@ class SpectrogramSettingsDialog(BaseSettingsDialog):
         self.dynamic_range_input = QLineEdit(str(saved.get('dynamic_range', config.LIVESPECTROGRAM_CONFIG.get('dynamic_range', 40))))
         # Add to form
         self.form.addRow("Dynamic Range (dB):", self.dynamic_range_input)
+        
+        # Text box for default gain (controls brightness: how bright the sounds appear)
+        self.gain_input = QLineEdit(str(saved.get('gain_db', config.LIVESPECTROGRAM_CONFIG.get('gain_db', 0.0))))
+        # Add to form
+        self.form.addRow("Default Gain (dB):", self.gain_input)
 
         # Text box for chunk duration (how wide each vertical pixel slice is in time)
         self.chunk_ms_input = QLineEdit(str(saved.get('chunk_ms', config.LIVESPECTROGRAM_CONFIG.get('chunk_ms', 15.0))))
@@ -582,6 +587,7 @@ class SpectrogramSettingsDialog(BaseSettingsDialog):
         self.display_seconds_input.setValidator(QDoubleValidator(0.1, 100.0, 2, self))
         self.fps_input.setValidator(QIntValidator(1, 240, self))
         self.dynamic_range_input.setValidator(QIntValidator(10, 150, self))
+        self.gain_input.setValidator(QIntValidator(0, 80, self))
         self.chunk_ms_input.setValidator(QDoubleValidator(0.1, 1000.0, 2, self))
         self.number_of_chunks_input.setValidator(QIntValidator(1, 100, self))
         self.padding_length_input.setValidator(QDoubleValidator(0.0, 1000.0, 2, self))
@@ -599,6 +605,8 @@ class SpectrogramSettingsDialog(BaseSettingsDialog):
             'colormap': self.colormap_combo.currentText(),
             # Convert contrast number to whole number
             'dynamic_range': safe_int(self.dynamic_range_input.text(), 40),
+            # Convert gain to whole number
+            'gain_db': safe_int(self.gain_input.text(), 0),
             # Convert chunk size to decimal
             'chunk_ms': safe_float(self.chunk_ms_input.text(), 15.0),
             # Convert chunk count to whole number
@@ -616,6 +624,7 @@ class SpectrogramSettingsDialog(BaseSettingsDialog):
         if idx >= 0: self.colormap_combo.setCurrentIndex(idx)
         
         self.dynamic_range_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['dynamic_range']))
+        self.gain_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG.get('gain_db', 0.0)))
         self.chunk_ms_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['chunk_ms']))
         self.number_of_chunks_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['number_of_chunks']))
         self.padding_length_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['padding_length_ms']))
@@ -641,6 +650,11 @@ class SpectrumSettingsDialog(BaseSettingsDialog):
         self.dynamic_range_input = QLineEdit(str(saved.get('dynamic_range', config.LIVESPECTRUM_CONFIG.get('dynamic_range', 40))))
         # Add to form
         self.form.addRow("Dynamic Range (dB):", self.dynamic_range_input)
+        
+        # Text box for default gain offset (adjustable in window with +/-)
+        self.gain_input = QLineEdit(str(saved.get('gain_offset_db', config.LIVESPECTRUM_CONFIG.get('gain_offset_db', 0.0))))
+        # Add to form
+        self.form.addRow("Default Gain (dB):", self.gain_input)
 
         # Text box for how much audio time is analyzed to draw one line
         self.chunk_ms_input = QLineEdit(str(saved.get('chunk_ms', config.LIVESPECTRUM_CONFIG.get('chunk_ms', 15.0))))
@@ -670,6 +684,7 @@ class SpectrumSettingsDialog(BaseSettingsDialog):
         # Apply input validators
         self.max_freq_input.setValidator(QIntValidator(1000, 48000, self))
         self.dynamic_range_input.setValidator(QIntValidator(10, 150, self))
+        self.gain_input.setValidator(QIntValidator(-100, 100, self))
         self.chunk_ms_input.setValidator(QDoubleValidator(0.1, 1000.0, 2, self))
         self.number_of_chunks_input.setValidator(QIntValidator(1, 100, self))
         self.fps_input.setValidator(QIntValidator(1, 240, self))
@@ -683,6 +698,8 @@ class SpectrumSettingsDialog(BaseSettingsDialog):
             'max_freq': safe_int(self.max_freq_input.text(), 5000),
             # Convert dynamic range to whole number
             'dynamic_range': safe_int(self.dynamic_range_input.text(), 40),
+            # Convert gain to whole number
+            'gain_offset_db': safe_int(self.gain_input.text(), 0),
             # Convert chunk size to decimal
             'chunk_ms': safe_float(self.chunk_ms_input.text(), 15.0),
             # Convert chunk count to whole number
@@ -698,6 +715,7 @@ class SpectrumSettingsDialog(BaseSettingsDialog):
     def load_defaults(self):
         self.max_freq_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['max_freq']))
         self.dynamic_range_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['dynamic_range']))
+        self.gain_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG.get('gain_offset_db', 0.0)))
         self.chunk_ms_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['chunk_ms']))
         self.number_of_chunks_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['number_of_chunks']))
         self.fps_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['fps']))

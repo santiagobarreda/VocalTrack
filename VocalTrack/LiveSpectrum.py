@@ -135,11 +135,15 @@ class LiveSpectrum(BaseAudioVisualizer):
         self.current_spectrum_db = None  # Averaged spectrum for drawing
         self.current_frequencies = None  # Frequency bins for spectrum
         self.sounds_processed_this_frame = 0  # Number of sounds processed this frame
-        self.gain_offset_db = 0.0  # Gain offset in dB (adjustable with +/-)
+        self.gain_offset_db = float(self.spec_config.get('gain_offset_db', 0.0))  # Gain offset in dB (adjustable with +/-)
 
         # Initialize default fonts to avoid recreating them on every frame (heavy OS lookup)
         self.font_14 = pygame.font.SysFont('Arial', 14)
         self.font_18_bold = pygame.font.SysFont('Arial', 18, bold=True)
+
+        # Cached surfaces
+        self.grid_surface = None
+        self.axes_surface = None
 
         # Start the main event loop (blocking)
         self.run()
@@ -162,8 +166,8 @@ class LiveSpectrum(BaseAudioVisualizer):
         # Log start message
         logger.info("LiveSpectrum started")
 
-        # Create clock for frame rate limiting
-        clock = pygame.time.Clock()
+        # Use parent class clock for frame rate limiting and performance monitoring
+        clock = self.clock
         
         # MAIN LOOP: Continues until keep_running flag is set False
         try:
@@ -188,7 +192,14 @@ class LiveSpectrum(BaseAudioVisualizer):
                 
                 # Draw grid if enabled (toggle with 'g')
                 if self.show_grid:
-                    self.draw_grid()
+                    if self.grid_surface is None:
+                        self.create_grid_surface()
+                    self.screen.blit(self.grid_surface, (0, 0))
+
+                # Draw axes, labels, and title
+                if self.axes_surface is None:
+                    self.create_axes_surface()
+                self.screen.blit(self.axes_surface, (0, 0))
 
                 # Draw spectrum line plot
                 if self.current_spectrum_db is not None and self.current_frequencies is not None:
@@ -312,43 +323,6 @@ class LiveSpectrum(BaseAudioVisualizer):
             # Arguments: surface, color, closed (False = don't connect end to start), points list, width
             pygame.draw.lines(self.screen, (0, 150, 255), False, points, 4)
                 
-        # Draw axes
-        # Left axis (Y-axis for magnitude)
-        pygame.draw.line(self.screen, (0, 0, 0), 
-                         (left_margin, top_margin), 
-                         (left_margin, screen_height - bottom_margin), 2)
-        
-        # Bottom axis (X-axis for frequency)
-        pygame.draw.line(self.screen, (0, 0, 0),
-                         (left_margin, screen_height - bottom_margin),
-                         (screen_width - right_margin, screen_height - bottom_margin), 2)
-
-        # Draw frequency axis labels
-        font = self.font_14
-        freq_labels = [0, self.max_freq // 4, self.max_freq // 2, 3 * self.max_freq // 4, self.max_freq]
-        for freq in freq_labels:
-            x_pixel = left_margin + (freq / self.max_freq) * plot_width
-            label_text = font.render(f"{freq}", True, (50, 50, 50))
-            text_rect = label_text.get_rect(center=(x_pixel, screen_height - bottom_margin + 25))
-            self.screen.blit(label_text, text_rect)
-
-        # Draw magnitude axis labels (dB) - fixed range from 0 dB to -dynamic_range dB
-        # Y-axis extends from 0 dB (top) to -dynamic_range dB (bottom)
-        db_labels = [0, -self.dynamic_range // 3, -2 * self.dynamic_range // 3, -self.dynamic_range]
-        for db_val in db_labels:
-            # Map dB value to pixel position (0 dB at top, -dynamic_range at bottom)
-            mag_normalized = (db_val - (-self.dynamic_range)) / (0.0 - (-self.dynamic_range))
-            y_pixel = screen_height - bottom_margin - mag_normalized * plot_height
-            label_text = font.render(f"{int(db_val)} dB", True, (50, 50, 50))
-            text_rect = label_text.get_rect(right=(left_margin - 10), centery=y_pixel)
-            self.screen.blit(label_text, text_rect)
-
-        # Draw title and info
-        title_font = self.font_18_bold
-        title = title_font.render("Frequency Spectrum", True, (0, 0, 0))
-        title_rect = title.get_rect(topleft=(20, 10))
-        self.screen.blit(title, title_rect)
-        
         # Draw frame info including padding_length_ms and number of bins
         #padding_ms = self.spec_config.get('padding_length_ms', 20.0)
         #nfft = self.analysis_config.get('spectrum_nfft', 512)
@@ -359,17 +333,14 @@ class LiveSpectrum(BaseAudioVisualizer):
         #info_rect = info_surface.get_rect(topright=(screen_width - 20, 10))
         #self.screen.blit(info_surface, info_rect)
 
-    def draw_grid(self):
-        """
-        Draw grid lines on the spectrum plot for visual reference.
-
-        Vertical lines mark frequency divisions; horizontal lines mark dB divisions.
-        Grid lines help users interpret the spectrum plot axes.
-        """
+    def create_axes_surface(self):
+        """Create cached background surface for axes, labels, and title."""
         screen_width = self.screen.get_width()
         screen_height = self.screen.get_height()
         
-        # Define plot area margins (must match draw_spectrum_line)
+        self.axes_surface = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
+        self.axes_surface.fill((0, 0, 0, 0))
+        
         left_margin = 60
         right_margin = 20
         top_margin = 40
@@ -378,13 +349,67 @@ class LiveSpectrum(BaseAudioVisualizer):
         plot_width = screen_width - left_margin - right_margin
         plot_height = screen_height - top_margin - bottom_margin
         
-        grid_color = (200, 200, 200)  # Light gray grid
+        # Draw axes
+        # Left axis (Y-axis for magnitude)
+        pygame.draw.line(self.axes_surface, (0, 0, 0), 
+                         (left_margin, top_margin), 
+                         (left_margin, screen_height - bottom_margin), 2)
+        
+        # Bottom axis (X-axis for frequency)
+        pygame.draw.line(self.axes_surface, (0, 0, 0),
+                         (left_margin, screen_height - bottom_margin),
+                         (screen_width - right_margin, screen_height - bottom_margin), 2)
+
+        # Draw frequency axis labels
+        font = self.font_14
+        freq_labels = [0, self.max_freq // 4, self.max_freq // 2, 3 * self.max_freq // 4, self.max_freq]
+        for freq in freq_labels:
+            x_pixel = left_margin + (freq / self.max_freq) * plot_width
+            label_text = font.render(f"{freq}", True, (50, 50, 50))
+            text_rect = label_text.get_rect(center=(x_pixel, screen_height - bottom_margin + 25))
+            self.axes_surface.blit(label_text, text_rect)
+
+        # Draw magnitude axis labels (dB)
+        db_labels = [0, -self.dynamic_range // 3, -2 * self.dynamic_range // 3, -self.dynamic_range]
+        for db_val in db_labels:
+            mag_normalized = (db_val - (-self.dynamic_range)) / (0.0 - (-self.dynamic_range))
+            y_pixel = screen_height - bottom_margin - mag_normalized * plot_height
+            label_text = font.render(f"{int(db_val)} dB", True, (50, 50, 50))
+            text_rect = label_text.get_rect(right=(left_margin - 10), centery=y_pixel)
+            self.axes_surface.blit(label_text, text_rect)
+
+        # Draw title
+        title_font = self.font_18_bold
+        title = title_font.render("Frequency Spectrum", True, (0, 0, 0))
+        title_rect = title.get_rect(topleft=(20, 10))
+        self.axes_surface.blit(title, title_rect)
+        
+        # Convert surface to match screen pixel format for optimized CPU blitting
+        self.axes_surface = self.axes_surface.convert_alpha()
+
+    def create_grid_surface(self):
+        """Create cached background surface for the grid lines."""
+        screen_width = self.screen.get_width()
+        screen_height = self.screen.get_height()
+        
+        self.grid_surface = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
+        self.grid_surface.fill((0, 0, 0, 0))
+        
+        left_margin = 60
+        right_margin = 20
+        top_margin = 40
+        bottom_margin = 60
+        
+        plot_width = screen_width - left_margin - right_margin
+        plot_height = screen_height - top_margin - bottom_margin
+        
+        grid_color = (200, 200, 200)
         
         # Draw vertical grid lines for frequency
         num_freq_lines = 4
         for i in range(1, num_freq_lines):
             x_pos = left_margin + (i / num_freq_lines) * plot_width
-            pygame.draw.line(self.screen, grid_color, 
+            pygame.draw.line(self.grid_surface, grid_color, 
                            (x_pos, top_margin),
                            (x_pos, screen_height - bottom_margin), 1)
         
@@ -392,9 +417,19 @@ class LiveSpectrum(BaseAudioVisualizer):
         num_mag_lines = 4
         for i in range(1, num_mag_lines):
             y_pos = top_margin + (i / num_mag_lines) * plot_height
-            pygame.draw.line(self.screen, grid_color,
+            pygame.draw.line(self.grid_surface, grid_color,
                            (left_margin, y_pos),
                            (screen_width - right_margin, y_pos), 1)
+            
+        # Convert surface to match screen pixel format for optimized CPU blitting
+        self.grid_surface = self.grid_surface.convert_alpha()
+
+    def draw_grid(self):
+        """Draw grid overlay. Kept for backward compatibility."""
+        if self.show_grid:
+            if self.grid_surface is None:
+                self.create_grid_surface()
+            self.screen.blit(self.grid_surface, (0, 0))
 
     def draw_help_overlay(self):
         """
@@ -444,6 +479,9 @@ class LiveSpectrum(BaseAudioVisualizer):
             self.spec_config['gui_height'] = self.event_holder.resize.h
             # Recreate screen with new dimensions
             self.screen = pygame.display.set_mode((self.spec_config['gui_width'], self.spec_config['gui_height']), pygame.RESIZABLE)
+            # Recreate cached surfaces
+            self.grid_surface = None
+            self.axes_surface = None
         
         # Handle gain adjustment with +/- keys (3 dB per press)
         if self.event_holder.plus_equals:
@@ -461,6 +499,20 @@ class LiveSpectrum(BaseAudioVisualizer):
         Stops the audio processor, quits pygame, and logs shutdown status.
         """
         try:
+            # Save current settings (like gain and window dimensions) back to manager
+            try:
+                from . import settings_manager
+                mgr = settings_manager.get_settings_manager()
+                saved = mgr.get('spectrum', {})
+                saved['gain_offset_db'] = self.gain_offset_db
+                saved['gui_width'] = self.screen.get_width()
+                saved['gui_height'] = self.screen.get_height()
+                mgr.set('spectrum', saved)
+                mgr.save()
+                logger.info("LiveSpectrum settings saved successfully")
+            except Exception as save_err:
+                logger.error(f"Error saving LiveSpectrum settings: {save_err}")
+
             # Stop audio capture thread
             if self.audio_processor:
                 self.audio_processor.stop()

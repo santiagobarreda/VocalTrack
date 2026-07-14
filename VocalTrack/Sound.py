@@ -174,14 +174,33 @@ class Sound:
         # Pitch is only estimate if spectrum is not, i.e., if we're not in spectrogram mode 
         # where we only care about the spectrum and not f0 and formants
         if not self.compute_spectrum:
+            # Create a normalized copy of the samples in float64 range [-1, 1]
+            if self.samples is not None and self.samples.size > 0:
+                if self.samples.dtype == np.int16:
+                    normalized_samples = self.samples.astype(np.float64) / 32768.0
+                else:
+                    normalized_samples = self.samples.copy().astype(np.float64)
+            else:
+                normalized_samples = np.array([])
+
+            # Pre-allocate Parselmouth sound wrapper once if parselmouth is used for either pitch or formants
+            pm_sound = None
+            if (self.pitch_method == 'parselmouth' or self.formant_method == 'parselmouth') and normalized_samples.size > 0:
+                try:
+                    import parselmouth
+                    pm_sound = parselmouth.Sound(normalized_samples.astype(np.float32), sampling_frequency=self.sample_rate)
+                except Exception as pm_err:
+                    logger.warning(f"Failed to pre-allocate Parselmouth sound: {pm_err}")
+
             pitch_res = get_pitch(
-                self.samples if self.samples is not None else np.array([]),
+                normalized_samples,
                 sample_rate=self.sample_rate,
                 method=self.pitch_method,
                 min_f0=self.min_f0,
                 max_f0=self.max_f0,
                 min_confidence=self.min_confidence,
-                min_rms_db=self.min_rms_db if self.min_rms_db is not None else -999.0
+                min_rms_db=self.min_rms_db if self.min_rms_db is not None else -999.0,
+                parselmouth_sound=pm_sound
             )
 
             # Store voicing and f0 from standardized estimator
@@ -199,7 +218,7 @@ class Sound:
                 # n_formants_praat (e.g., 5.5) controls LPC order for formant search
                 # Always extract and return only the first 3 formants (F1, F2, F3)
                 ff = get_formants(
-                    self.samples,
+                    normalized_samples,
                     sample_rate=self.sample_rate,
                     method=self.formant_method,
                     max_formant=int(self.max_formant),
@@ -207,7 +226,8 @@ class Sound:
                     window_length=self.window_length,
                     time_step=self.time_step,
                     pre_emphasis_hz=self.pre_emphasis_hz,
-                    n_formants_praat=self.n_formants
+                    n_formants_praat=self.n_formants,
+                    parselmouth_sound=pm_sound
                 )
                 farr = ff.get('formants', np.zeros(3))
                 # Handle NaN values that can come from Parselmouth or other estimators

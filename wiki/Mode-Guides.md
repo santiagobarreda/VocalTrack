@@ -9,6 +9,7 @@ This guide provides detailed documentation for each of VocalTrack's four visuali
 VocalTrack uses specialized analysis functions for each supported backend. When you select a formant or pitch analysis method in Settings, the software automatically delegates to the appropriate function:
 
 - **Native methods** (`formant_method='native'`, `pitch_method='native'`): Fast, built-in implementations using standard signal processing (LPC for formants, autocorrelation for pitch)
+- **WLP method** (`formant_method='wlp'`): Built-in Weighted Linear Prediction with Short-Time Energy (STE) weighting, optimized for high-pitched or nasalized speech by de-emphasizing low-energy regions.
 - **Parselmouth methods** (`formant_method='parselmouth'`, `pitch_method='parselmouth'`): Praat-based algorithms via the Parselmouth library. Also pretty standard (LPC for formants, autocorrelation for pitch)
 - **Custom methods** (`formant_method='custom'`, `pitch_method='custom'`): User-defined (that's you) analysis functions for advanced users. These are not implemented by default
 
@@ -26,7 +27,7 @@ LiveVowel provides real-time visualization of vowel formants in F1/F2 acoustic s
 
 The display shows a 2D plot in the style of the IPA vowel quadrilateral:
 
-- **Horizontal axis (X)**: Inverted F2 formant frequency (typically 500-2700 Hz), i.e. vowel frontness
+- **Horizontal axis (X)**: Inverted F2 formant frequency (typically 500-3000 Hz), i.e. vowel frontness
 - **Vertical axis (Y)**: Inverted F1 formant frequency (typically 200-1200 Hz), i.e. vowel height
 - **Axes reversed**: Higher frequencies appear toward the left and bottom (matching conventional vowel chart orientation)
 - **Optional overlays**: 
@@ -118,7 +119,7 @@ Columns:
 
 2. Adjust F1/F2 display ranges (Formant Plot Settings) to maximally use the plot space:
    - Default F1: 200-1200 Hz (good for most speakers)
-   - Default F2: 500-2700 Hz (good for most speakers)
+   - Default F2: 500-3000 Hz (good for most speakers)
    - Narrow ranges for detailed view of specific vowel regions
    - Widen ranges if vowels appear cut off
 
@@ -492,10 +493,10 @@ The display shows:
    - `max_freq=3000`: Focus on fundamental and low harmonics
 
 2. Adjust smoothing (Spectrum Settings):
-   - Higher smoothing (0.8-0.9): Very stable, slow to respond
-   - Medium smoothing (0.7): Default, balanced
-   - Lower smoothing (0.3-0.5): Faster response, more jitter
-   - No smoothing (0.0): Instantaneous, very noisy
+    - Lower values (0.2-0.4): Heavy smoothing, very stable but slow to respond
+    - Medium values (0.5-0.7): Balanced stability and responsiveness (default 0.7)
+    - Higher values (0.8-0.9): Highly responsive, more jitter
+    - Value of 1.0: No smoothing, instantaneous and noisy
 
 3. Set dynamic range (Spectrum Settings):
    - Smaller range (30 dB): Compress vertical scale, see detail at all levels
