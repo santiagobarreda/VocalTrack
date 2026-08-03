@@ -4,7 +4,11 @@
 
 Real-time speech visualization toolkit with four specialized modes for acoustic analysis. Features a user-friendly GUI launcher, configurable analysis parameters, and automated data export for research,  clinical, and pedagogical applications.
 
-For a detailed description of the **VocalTrack** architecture and signal processing pipeline, please refer to the [methods article](https://github.com/santiagobarreda/VocalTrack/releases/download/v1.0.0-beta/Barreda_2026_VocalTrack_underreview.pdf), currently under review, or check out the comprehensive documentation available in the [wiki](https://github.com/santiagobarreda/VocalTrack/wiki).
+For a detailed description of the **VocalTrack** architecture and signal processing pipeline, please refer to:
+
+* the [methods article](https://github.com/santiagobarreda/VocalTrack/releases/download/v1.0.0-beta/Barreda_2026_VocalTrack_underreview.pdf), currently under review.
+* check out the comprehensive documentation available in the [wiki](https://github.com/santiagobarreda/VocalTrack/wiki).
+* check out the [YouTube channel](https://www.youtube.com/playlist?list=PLcX__4_5WSTg).
 
 ## Features
 
