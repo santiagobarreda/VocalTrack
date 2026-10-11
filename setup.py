@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="VocalTrack",
-    version="0.1.0",
+    version="1.0.0",
     author="Santiago Barreda",
     description="Real-time audio analysis for vowel and pitch tracking",
     long_description=long_description,
@@ -21,7 +21,7 @@ setup(
         "Operating System :: OS Independent",
         "Topic :: Multimedia :: Sound/Audio :: Analysis",
     ],
-    python_requires=">=3.11",
+    python_requires=">=3.9",
     install_requires=[
         "praat-parselmouth>=0.4.0",
         "pygame-ce>=2.5.0",

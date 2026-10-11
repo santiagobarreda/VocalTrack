@@ -1,0 +1,204 @@
+{
+  "name": "Full IPA Vowel Chart (Reference Grid)",
+  "description": "Complete inventory of all 28 International Phonetic Alphabet (IPA) vowels arranged as an idealized acoustic polygon on the vowel quadrilateral (F1 vs F2)",
+  "language": "International Phonetic Alphabet (IPA)",
+  "source": "Idealized Cardinal IPA Vowel Quadrilateral (IPA Handbook, 1999)",
+  "vowels": [
+    {
+      "symbol": "i",
+      "name": "Close front unrounded",
+      "description": "Close front unrounded vowel (e.g. English 'see', French 'si')",
+      "f1": 300.0,
+      "f2": 2500.0
+    },
+    {
+      "symbol": "y",
+      "name": "Close front rounded",
+      "description": "Close front rounded vowel (e.g. French 'tu', German 'über')",
+      "f1": 300.0,
+      "f2": 2300.0
+    },
+    {
+      "symbol": "ɨ",
+      "name": "Close central unrounded",
+      "description": "Close central unrounded vowel (e.g. Russian 'мы', Welsh 'dyn')",
+      "f1": 300.0,
+      "f2": 1700.0
+    },
+    {
+      "symbol": "ʉ",
+      "name": "Close central rounded",
+      "description": "Close central rounded vowel (e.g. Swedish 'hus', Scottish English 'boot')",
+      "f1": 300.0,
+      "f2": 1500.0
+    },
+    {
+      "symbol": "ɯ",
+      "name": "Close back unrounded",
+      "description": "Close back unrounded vowel (e.g. Japanese 'す', Turkish 'ılık')",
+      "f1": 300.0,
+      "f2": 1000.0
+    },
+    {
+      "symbol": "u",
+      "name": "Close back rounded",
+      "description": "Close back rounded vowel (e.g. Spanish 'tú', German 'Schuh')",
+      "f1": 300.0,
+      "f2": 800.0
+    },
+    {
+      "symbol": "ɪ",
+      "name": "Near-close front unrounded",
+      "description": "Near-close near-front unrounded vowel (e.g. English 'bit', German 'bitte')",
+      "f1": 390.0,
+      "f2": 2150.0
+    },
+    {
+      "symbol": "ʏ",
+      "name": "Near-close front rounded",
+      "description": "Near-close near-front rounded vowel (e.g. German 'hübsch', Swedish 'nytt')",
+      "f1": 390.0,
+      "f2": 1950.0
+    },
+    {
+      "symbol": "ʊ",
+      "name": "Near-close back rounded",
+      "description": "Near-close near-back rounded vowel (e.g. English 'foot', German 'Mutter')",
+      "f1": 390.0,
+      "f2": 1100.0
+    },
+    {
+      "symbol": "e",
+      "name": "Close-mid front unrounded",
+      "description": "Close-mid front unrounded vowel (e.g. French 'été', Spanish 'café')",
+      "f1": 480.0,
+      "f2": 2300.0
+    },
+    {
+      "symbol": "ø",
+      "name": "Close-mid front rounded",
+      "description": "Close-mid front rounded vowel (e.g. French 'peu', German 'schön')",
+      "f1": 480.0,
+      "f2": 2100.0
+    },
+    {
+      "symbol": "ɘ",
+      "name": "Close-mid central unrounded",
+      "description": "Close-mid central unrounded vowel (e.g. Russian 'это')",
+      "f1": 480.0,
+      "f2": 1600.0
+    },
+    {
+      "symbol": "ɵ",
+      "name": "Close-mid central rounded",
+      "description": "Close-mid central rounded vowel (e.g. Swedish 'dumt', Mongolian 'өдөр')",
+      "f1": 480.0,
+      "f2": 1400.0
+    },
+    {
+      "symbol": "ɤ",
+      "name": "Close-mid back unrounded",
+      "description": "Close-mid back unrounded vowel (e.g. Mandarin '喝', Vietnamese 'tơ')",
+      "f1": 480.0,
+      "f2": 1000.0
+    },
+    {
+      "symbol": "o",
+      "name": "Close-mid back rounded",
+      "description": "Close-mid back rounded vowel (e.g. Spanish 'sol', French 'beau')",
+      "f1": 480.0,
+      "f2": 800.0
+    },
+    {
+      "symbol": "ə",
+      "name": "Mid central (schwa)",
+      "description": "Mid central vowel / schwa (e.g. English 'about', 'comma')",
+      "f1": 570.0,
+      "f2": 1450.0
+    },
+    {
+      "symbol": "ɛ",
+      "name": "Open-mid front unrounded",
+      "description": "Open-mid front unrounded vowel (e.g. English 'bed', French 'bête')",
+      "f1": 660.0,
+      "f2": 2100.0
+    },
+    {
+      "symbol": "œ",
+      "name": "Open-mid front rounded",
+      "description": "Open-mid front rounded vowel (e.g. French 'neuf', German 'Hölle')",
+      "f1": 660.0,
+      "f2": 1900.0
+    },
+    {
+      "symbol": "ɜ",
+      "name": "Open-mid central unrounded",
+      "description": "Open-mid central unrounded vowel (e.g. RP English 'bird', 'nurse')",
+      "f1": 660.0,
+      "f2": 1500.0
+    },
+    {
+      "symbol": "ɞ",
+      "name": "Open-mid central rounded",
+      "description": "Open-mid central rounded vowel (e.g. Somali 'keen', Irish 'bird')",
+      "f1": 660.0,
+      "f2": 1300.0
+    },
+    {
+      "symbol": "ʌ",
+      "name": "Open-mid back unrounded",
+      "description": "Open-mid back unrounded vowel (e.g. English 'strut', 'cup')",
+      "f1": 660.0,
+      "f2": 1000.0
+    },
+    {
+      "symbol": "ɔ",
+      "name": "Open-mid back rounded",
+      "description": "Open-mid back rounded vowel (e.g. French 'port', German 'Sonne')",
+      "f1": 660.0,
+      "f2": 800.0
+    },
+    {
+      "symbol": "æ",
+      "name": "Near-open front unrounded",
+      "description": "Near-open front unrounded vowel (e.g. English 'cat', 'trap')",
+      "f1": 750.0,
+      "f2": 1900.0
+    },
+    {
+      "symbol": "ɐ",
+      "name": "Near-open central",
+      "description": "Near-open central vowel (e.g. German 'aber', Portuguese 'para')",
+      "f1": 750.0,
+      "f2": 1400.0
+    },
+    {
+      "symbol": "a",
+      "name": "Open front unrounded",
+      "description": "Open front unrounded vowel (e.g. Spanish 'casa', German 'Vater')",
+      "f1": 840.0,
+      "f2": 1700.0
+    },
+    {
+      "symbol": "ɶ",
+      "name": "Open front rounded",
+      "description": "Open front rounded vowel (e.g. Bavarian 'Seil', Danubian Swedish 'mat')",
+      "f1": 840.0,
+      "f2": 1500.0
+    },
+    {
+      "symbol": "ɑ",
+      "name": "Open back unrounded",
+      "description": "Open back unrounded vowel (e.g. English 'father', 'calm')",
+      "f1": 840.0,
+      "f2": 1000.0
+    },
+    {
+      "symbol": "ɒ",
+      "name": "Open back rounded",
+      "description": "Open back rounded vowel (e.g. British English 'lot', 'cloth')",
+      "f1": 840.0,
+      "f2": 800.0
+    }
+  ]
+}

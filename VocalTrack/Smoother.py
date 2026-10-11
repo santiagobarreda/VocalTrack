@@ -3,6 +3,36 @@ import numpy  # NumPy handles array math for formant buffers
 import math  # Math module for exponential and trigonometric calculations
 from . import config  # Import configuration module for default audio settings
 
+
+def _one_euro_step(x, x_prev, dx_prev, dt, min_cutoff, beta, dcutoff, velocity_power):
+    """
+    One step of the 1-Euro filter (Casiez, Roussel & Vogel 2012), with the velocity term raised
+    to velocity_power (>1 snaps faster to fast changes).
+
+    Args:
+        x (float): New input value (log scale).
+        x_prev (float): Previous filtered value.
+        dx_prev (float): Previous filtered velocity.
+        dt (float): Time since the previous value (s).
+
+    Returns:
+        tuple: (filtered value, filtered velocity)
+    """
+    def alpha(cutoff):
+        # Exponential smoothing coefficient for a low-pass filter with this cutoff (Hz)
+        tau = 1.0 / (2.0 * math.pi * cutoff)
+        return 1.0 / (1.0 + tau / dt)
+
+    # Velocity (log Hz per second), smoothed with its own low-pass filter
+    dx = (x - x_prev) / dt
+    a_d = alpha(dcutoff)
+    dx_hat = a_d * dx + (1.0 - a_d) * dx_prev
+    # Cutoff rises with speed: little smoothing during fast changes, more when the value is steady
+    cutoff = max(1e-6, min_cutoff + beta * (abs(dx_hat) ** velocity_power))
+    a = alpha(cutoff)
+    return a * x + (1.0 - a) * x_prev, dx_hat
+
+
 class Smoother:
     """Smooths formant values using temporal continuity constraints.
     
@@ -13,13 +43,13 @@ class Smoother:
     
     """
     
-    def __init__(self, memory_n=5, stability_threshold=0.15, skip_tolerance=2,
+    def __init__(self, memory_n=3, stability_threshold=0.15, skip_tolerance=2,
                  use_euro_filter=True, euro_min_cutoff=0.05, euro_beta=1.5,
-                 euro_dcutoff=0.5, velocity_power=1.5, hold_unvoiced=True):
+                 euro_dcutoff=0.5, velocity_power=1.5, chunk_ms=None):
         """Initialize the smoother with empty buffers.
-        
+
         Args:
-            memory_n (int, optional): Memory buffer size. Defaults to 5.
+            memory_n (int, optional): Memory buffer size. Defaults to 3.
             stability_threshold (float, optional): Max log-scale delta allowed. Defaults to 0.15.
             skip_tolerance (int, optional): Unstable frames allowed before reset. Defaults to 2.
             euro_min_cutoff (float, optional): Baseline cutoff for 1-Euro. Defaults to 0.05.
@@ -27,7 +57,8 @@ class Smoother:
             euro_dcutoff (float, optional): Velocity smoothing cutoff for 1-Euro. Defaults to 0.5.
             use_euro_filter (bool, optional): Apply 1-Euro temporal smoothing. Defaults to True.
             velocity_power (float, optional): Non-linear exponent for adaptive snap. Defaults to 1.5.
-            hold_unvoiced (bool, optional): Hold last value on brief unvoiced frames. Defaults to True.
+            chunk_ms (float, optional): Time between analysis frames in ms (one display frame in
+                LiveVowel and LivePitch). Falls back to one frame of a 60 Hz display if not provided.
         """
         # Initialize rolling buffers for F1, F2, and f0 with ones (avoid log(0) errors)
         self.f1_history = numpy.full(memory_n, 1)  # F1 buffer (first formant history in log space)
@@ -52,15 +83,13 @@ class Smoother:
         self.stability_threshold = stability_threshold  # Lower values = stricter stability requirement
         # Number of consecutive unstable frames allowed before resetting track
         self.skip_tolerance = skip_tolerance  # Allows brief gaps in voicing without breaking track
-        # If True, hold last stable value during brief unvoiced segments
-        self.hold_unvoiced = hold_unvoiced  # Prevents track breaks during momentary voice drops
-        # Read chunk duration (ms) from config for timing calculations in 1-Euro filter
-        self.chunk_ms = config.AUDIO_CONFIG.get('chunk_ms')  # Time between audio frames in milliseconds
+        # Chunk duration (ms) for timing calculations in 1-Euro filter; falls back to one frame of a 60 Hz display
+        self.chunk_ms = chunk_ms if chunk_ms is not None else config.chunk_ms_for_fps(60)
         
-        # List storing track numbers for each stable frame (for trajectory coloring)
-        self.track = []  # Track IDs for each plotted point (allows multi-colored trajectories)
         # Current track identifier (starts at 0, increments when new stable track begins)
         self.track_number = 0  # Increments each time track resets after instability
+        # True once the current track has ended (skip tolerance exceeded); the next stable frame starts a new track
+        self.track_ended = True
         
         # Isolated state variables for formants (separate from pitch state)
         self.skipped = 0  # Counter for consecutive unstable formant frames
@@ -87,113 +116,57 @@ class Smoother:
         self.velocity_power = velocity_power  # Exponent for non-linear velocity influence (>1 = snap to fast changes)
 
     def _apply_1euro_filter_scalar(self, value):
-        """Apply 1-euro filter to a single value (log scale).
-        
-        This is the pitch-only version that operates on a single scalar value.
-        Uses adaptive cutoff frequency based on velocity to balance smoothness and responsiveness.
-        
+        """Apply the 1-Euro filter to one pitch value (log scale), keeping pitch-only filter state.
+
         Args:
             value (float): Input value in log space (log(Hz + 1))
-            
+
         Returns:
             float: Filtered value in log space
         """
         # First call: initialize filter state and return input value unchanged
-        if self._pitch_euro_prev_time is None:  # Check if this is the first frame
-            self._pitch_euro_prev_time = 0  # Initialize time counter to zero
-            self._pitch_euro_x_prev = value  # Store current value as "previous" for next frame
-            self._pitch_euro_dx_prev = 0.0  # No velocity on first frame
-            return value  # Return input unchanged (no history to filter against)
+        if self._pitch_euro_prev_time is None:
+            self._pitch_euro_prev_time = 0  # Marks the filter as started
+            self._pitch_euro_x_prev = value
+            self._pitch_euro_dx_prev = 0.0
+            return value
 
-        # Calculate time delta: base chunk time + accumulated skipped frames
-        base_dt = self.chunk_ms / 1000.0  # Convert chunk duration from ms to seconds
-        dt = base_dt + (base_dt * self.pitch_skipped)  # Add skipped frame time (gap handling)
-        self._pitch_euro_prev_time = self._pitch_euro_prev_time + dt  # Increment internal filter time tracker
-
-        # Define low-pass filter smoothing coefficient from cutoff frequency
-        def alpha(cutoff, dt_local):  # Args: cutoff in Hz, time delta in seconds
-            tau = 1.0 / (2.0 * math.pi * cutoff)  # Convert cutoff to time constant (RC filter analogy)
-            return 1.0 / (1.0 + tau / dt_local)  # Exponential smoothing coefficient (0=smooth, 1=unfiltered)
-
-        # Step 1: Calculate raw velocity (derivative) from position change
-        x_prev = self._pitch_euro_x_prev  # Previous filtered value (x[n-1])
-        dx = (value - x_prev) / dt  # Instantaneous velocity: Δx/Δt (log Hz per second)
-
-        # Step 2: Smooth the velocity estimate using a low-pass filter
-        a_d = alpha(self.euro_dcutoff, dt)  # Get smoothing coefficient for velocity channel
-        dx_hat = a_d * dx + (1.0 - a_d) * self._pitch_euro_dx_prev  # Apply exponential filter to velocity
-
-        # Step 3: Compute adaptive cutoff frequency based on smoothed velocity magnitude
-        # Non-linear adaptive snap using velocity_power exponent (>1 emphasizes fast motion)
-        cutoff = max(1e-6, self.euro_min_cutoff + self.euro_beta * (abs(dx_hat) ** self.velocity_power))
-
-        # Step 4: Apply low-pass filter to input value using velocity-adjusted cutoff
-        a = alpha(cutoff, dt)  # Get smoothing coefficient for main signal channel
-        x_hat = a * value + (1.0 - a) * x_prev  # Blend new input with previous output (higher velocity → less smoothing)
-
-        # Step 5: Store current filtered state for next iteration
-        self._pitch_euro_x_prev = x_hat  # Update previous filtered value
-        self._pitch_euro_dx_prev = dx_hat  # Update previous velocity estimate
-
-        return x_hat  # Return smoothed output value in log space
+        # Time since the last accepted frame: one chunk, plus one chunk per skipped frame
+        base_dt = self.chunk_ms / 1000.0
+        dt = base_dt + (base_dt * self.pitch_skipped)
+        x_hat, dx_hat = _one_euro_step(value, self._pitch_euro_x_prev, self._pitch_euro_dx_prev, dt,
+                                       self.euro_min_cutoff, self.euro_beta, self.euro_dcutoff, self.velocity_power)
+        self._pitch_euro_x_prev = x_hat
+        self._pitch_euro_dx_prev = dx_hat
+        return x_hat
 
     def _apply_1euro_filter(self, values):
-        """Apply 1-euro filter to smooth formant values.
-        
-        This is the formant version that operates on a 3-element list [F1, F2, f0].
-        Uses adaptive cutoff frequency based on velocity to balance smoothness and responsiveness.
-        Each formant channel maintains independent state (position, velocity, time).
-        
+        """Apply the 1-Euro filter to [F1, F2, f0] (log scale), each channel with its own state.
+
         Args:
             values (list): 3-element list [log(F1+1), log(F2+1), log(f0+1)]
-            
+
         Returns:
             list: Filtered 3-element list in log space
         """
         # First call: initialize filter state and return input values unchanged
-        if self._euro_prev_time is None:  # Check if this is the first frame
-            self._euro_prev_time = 0  # Initialize time counter to zero
-            self._euro_x_prev = values.copy()  # Store current values as "previous" for next frame
-            self._euro_dx_prev = [0.0, 0.0, 0.0]  # No velocity on first frame for all 3 channels
-            return values  # Return inputs unchanged (no history to filter against)
+        if self._euro_prev_time is None:
+            self._euro_prev_time = 0  # Marks the filter as started
+            self._euro_x_prev = values.copy()
+            self._euro_dx_prev = [0.0, 0.0, 0.0]
+            return values
 
-        # Calculate time delta: base chunk time + accumulated skipped frames
-        base_dt = self.chunk_ms / 1000.0  # Convert chunk duration from ms to seconds
-        dt = base_dt + (base_dt * self.skipped)  # Add skipped frame time (gap handling for formants)
-        self._euro_prev_time = self._euro_prev_time + dt  # Increment internal filter time tracker
-
-        # Define low-pass filter smoothing coefficient from cutoff frequency
-        def alpha(cutoff, dt_local):  # Args: cutoff in Hz, time delta in seconds
-            tau = 1.0 / (2.0 * math.pi * cutoff)  # Convert cutoff to time constant (RC filter analogy)
-            return 1.0 / (1.0 + tau / dt_local)  # Exponential smoothing coefficient (0=smooth, 1=unfiltered)
-
-        out_vals = []  # Output list for 3 filtered formant values
-        
-        # Process each formant channel independently (F1, F2, f0)
-        for i, x in enumerate(values):  # i=index (0,1,2), x=current formant value (log scale)
-            # Step 1: Calculate raw velocity (derivative) from position change
-            x_prev = self._euro_x_prev[i]  # Previous filtered value for this channel (x[n-1])
-            dx = (x - x_prev) / dt  # Instantaneous velocity: Δx/Δt (log Hz per second)
-
-            # Step 2: Smooth the velocity estimate using a low-pass filter
-            a_d = alpha(self.euro_dcutoff, dt)  # Get smoothing coefficient for velocity channel
-            dx_hat = a_d * dx + (1.0 - a_d) * self._euro_dx_prev[i]  # Apply exponential filter to velocity
-
-            # Step 3: Compute adaptive cutoff frequency based on smoothed velocity magnitude
-            # Non-linear adaptive snap using velocity_power exponent (>1 emphasizes fast motion)
-            cutoff = max(1e-6, self.euro_min_cutoff + self.euro_beta * (abs(dx_hat) ** self.velocity_power))
-
-            # Step 4: Apply low-pass filter to input value using velocity-adjusted cutoff
-            a = alpha(cutoff, dt)  # Get smoothing coefficient for main signal channel
-            x_hat = a * x + (1.0 - a) * x_prev  # Blend new input with previous output (higher velocity → less smoothing)
-
-            out_vals.append(x_hat)  # Add filtered value to output list
-
-            # Step 5: Store current filtered state for next iteration (per-channel state)
-            self._euro_x_prev[i] = x_hat  # Update previous filtered value for this channel
-            self._euro_dx_prev[i] = dx_hat  # Update previous velocity estimate for this channel
-
-        return out_vals  # Return list of 3 smoothed formant values in log space
+        # Time since the last accepted frame: one chunk, plus one chunk per skipped frame
+        base_dt = self.chunk_ms / 1000.0
+        dt = base_dt + (base_dt * self.skipped)
+        out_vals = []
+        for i, x in enumerate(values):
+            x_hat, dx_hat = _one_euro_step(x, self._euro_x_prev[i], self._euro_dx_prev[i], dt,
+                                           self.euro_min_cutoff, self.euro_beta, self.euro_dcutoff, self.velocity_power)
+            out_vals.append(x_hat)
+            self._euro_x_prev[i] = x_hat
+            self._euro_dx_prev[i] = dx_hat
+        return out_vals
 
     def smooth_pitch(self, sound, min_f0=None, max_f0=None):
         """Smooth pitch (f0) values without formant stability tracking.
@@ -328,12 +301,14 @@ class Smoother:
         # CASE 1: Frame is mathematically stable and buffer is fully warmed up (ACCEPT)
         if self.valid_frames == self.memory_n and errors == 0:  # All three formants are stable
 
-            # Track segment boundaries: increment track ID when starting a new stable region
-            if not self.use and self.skipped == 0:  # Transitioning from unstable→stable AND no skips
+            # Track segment boundaries: increment track ID when starting a new stable region.
+            # A brief glitch within skip tolerance continues the same track; once the track has
+            # ended (tolerance exceeded), the next stable frame always starts a new one.
+            if not self.use and (self.skipped == 0 or self.track_ended):
                 self.track_number += 1  # New contiguous vowel segment begins
+                self.track_ended = False
              
             self.use = True  # Mark formants as trustworthy for plotting/export
-            self.track.append(self.track_number)  # Log current track ID for this frame
       
             # Optionally apply 1-Euro filter to all three formants jointly (in log space)
             if self.use_euro_filter:
@@ -376,6 +351,7 @@ class Smoother:
                 self.use = False  # Mark as not trustworthy
             else:  # Exceeded skip tolerance (trajectory is truly broken)
                 self.skipped = 0  # Reset skip counter
+                self.track_ended = True  # Next stable frame begins a new track
 
                 # Reset 1-Euro filter state (start fresh on next stable segment)
                 self._euro_prev_time = None  # Clear time tracker

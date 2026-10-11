@@ -1,13 +1,12 @@
 """
 Audio device enumeration and default device utilities for input selection.
 
-This module provides two simple functions that let the rest of the application
-discover which microphones and audio input devices are plugged into the computer:
+This module provides a function that lets the rest of the application discover
+which microphones and audio input devices are plugged into the computer:
 
   - get_audio_devices()       → a list of all available input devices
-  - get_default_input_device() → the index of the system-chosen default mic
 
-Both functions use Qt's QMediaDevices API, which asks the operating system for
+It uses Qt's QMediaDevices API, which asks the operating system for
 the authoritative device list. This works on Windows (WASAPI), macOS (CoreAudio),
 and Linux (ALSA/PulseAudio) without any platform-specific code.
 
@@ -120,41 +119,3 @@ def get_audio_devices():
         logger.warning("No audio input devices found")
 
     return devices
-
-
-def get_default_input_device():
-    """
-    Return the index of the operating system's currently selected default audio input device.
-
-    This is a convenience wrapper around get_audio_devices() logic. It is used
-    when the application starts up and no device has been saved in settings yet,
-    so we can pre-select a sensible default in the microphone drop-down.
-
-    Returns
-    -------
-    int or None
-        The zero-based index into Qt's audio input list for the default device.
-        Returns None if:
-          - No audio input devices are available at all, OR
-          - Qt cannot identify which device is the system default.
-    """
-    # Make sure Qt is initialized before we touch QMediaDevices.
-    _ensure_qt_core_app()
-
-    # Get the full list of audio input devices from Qt.
-    inputs = QMediaDevices.audioInputs()
-
-    # Get the QAudioDevice descriptor that Qt considers the system default.
-    default_input = QMediaDevices.defaultAudioInput()
-
-    # Walk through the device list and find the position of the default device.
-    for i, device in enumerate(inputs):
-        if device == default_input:
-            # Found it - return its index so the caller can use it directly as
-            # input_device_index when creating an AudioProcessor.
-            return i
-
-    # If we reach here, either the list was empty or Qt returned a default device
-    # that does not appear in the enumerated list (very unusual). Return None to
-    # signal that no valid default could be identified.
-    return None

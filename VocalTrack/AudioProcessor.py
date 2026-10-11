@@ -5,7 +5,7 @@ import queue
 import math
 # Import Qt core app and QtMultimedia audio capture APIs
 from PySide6.QtCore import QCoreApplication, QThread
-from PySide6.QtMultimedia import QAudioFormat, QAudioSource, QMediaDevices
+from PySide6.QtMultimedia import QAudioFormat, QAudioSource, QMediaDevices, QAudio
 # Import numpy for efficient numerical array operations on audio samples
 import numpy as np
 # Import logging for debug/error messages and warnings
@@ -37,25 +37,36 @@ class AudioProcessor(QThread):
 
     The sample rate is always calculated as 2 × max_formant (Nyquist theorem) for efficient analysis. There 
     is no option to override this, as higher rates waste computation time.
-    The chunk size and number of chunks determine the temporal resolution and latency of analysis. Smaller
-    chunks and fewer chunks reduce latency but may decrease accuracy. The default configuration provides 
-    a good balance for real-time vocal analysis.
+    Audio is captured in chunks of chunk_ms, and each new chunk triggers one analysis of the most
+    recent window_ms of audio. The chunk is therefore the time step between analyses (the visualizers
+    set it to one display frame, or to the time step setting in LiveSpectrogram), and consecutive
+    windows overlap by window_ms - chunk_ms.
 
     """
     
-    def __init__(self, chunk_ms=None, number_of_chunks=None, analysis_config=None, min_rms_db=None, 
-                 input_device_index=None, raw_queue_maxsize=50, analyzed_queue_maxsize=50):
+    # Input devices that recently failed to deliver audio (name -> time of the failure), shared by
+    # all AudioProcessors so that a new recording does not begin by retrying a device that just failed
+    _failed_devices = {}
+
+    def __init__(self, chunk_ms=None, window_ms=None, analysis_config=None, min_rms_db=None,
+                 input_device_index=None, raw_queue_maxsize=50, analyzed_queue_maxsize=50,
+                 input_device_name=None):
         """
         Initialize the audio processor thread and configure audio capture and analysis parameters.
 
         Args:
-            chunk_ms (int, optional): Duration of each audio chunk in milliseconds. Defaults to 5.
-            number_of_chunks (int, optional): Number of chunks to stitch together for each analysis window. Defaults to 5.
+            chunk_ms (float, optional): Duration of each audio chunk in milliseconds, which is the
+                time step between analyses. Defaults to one frame of a 60 Hz display.
+            window_ms (float, optional): Length of each analysis window in milliseconds. Defaults to
+                the analysis_config window_length, or 50.
             analysis_config (dict, optional): Analysis configuration dictionary. Defaults to None.
             min_rms_db (float, optional): Minimum RMS in dB for analysis. If provided, overrides config value.
             input_device_index (int, optional): Audio input device index. None uses system default.
             raw_queue_maxsize (int, optional): Maximum size for raw samples queue. Defaults to 50.
             analyzed_queue_maxsize (int, optional): Maximum size for analyzed sounds queue. Defaults to 50.
+            input_device_name (str, optional): Audio input device name. Takes priority over
+                input_device_index, whose position in the device list can change when devices
+                are plugged in or removed.
         """
         # Initialize the parent QThread class
         super(AudioProcessor, self).__init__()
@@ -64,6 +75,11 @@ class AudioProcessor(QThread):
         # There is no reason to sample faster than 2× the highest frequency we want to analyze
         max_formant = (analysis_config or {}).get('max_formant', 5000)
         sample_rate = 2 * max_formant
+        # A visualizer may request a higher stream rate (LiveSpectrum does, so max formant can be
+        # changed live; formant analysis then resamples each window to 2 x max_formant)
+        requested_rate = (analysis_config or {}).get('analysis_sample_rate')
+        if requested_rate:
+            sample_rate = int(requested_rate)
         
         # Store analysis sample rate (samples per second, always calculated as 2×max_formant)
         # This is the rate used by Sound analysis and by the recording buffer.
@@ -74,14 +90,15 @@ class AudioProcessor(QThread):
         
         # Safely handle default parameters if None is passed
         if chunk_ms is None:
-            chunk_ms = (analysis_config or {}).get('chunk_ms') or 20
-        if number_of_chunks is None:
-            number_of_chunks = (analysis_config or {}).get('number_of_chunks') or 3
-            
-        # Store chunk duration in milliseconds
+            chunk_ms = (analysis_config or {}).get('chunk_ms') or config.chunk_ms_for_fps(60)
+        if window_ms is None:
+            window_ms = (analysis_config or {}).get('window_ms') or \
+                1000.0 * float((analysis_config or {}).get('window_length', 0.05))
+
+        # Store chunk duration in milliseconds (the time step between analyses)
         self.chunk_ms = chunk_ms
-        # Store number of chunks to stitch together for each analysis window
-        self.number_of_chunks = max(int(number_of_chunks), 1)
+        # Store analysis window length in milliseconds
+        self.window_ms = window_ms
         # Store analysis configuration (passed to Sound objects)
         self.analysis_config = analysis_config or {}
         
@@ -89,14 +106,26 @@ class AudioProcessor(QThread):
         if min_rms_db is not None:
             self.analysis_config['min_rms_db'] = min_rms_db
         
-        # Store audio input device index (None = system default)
+        # Store audio input device name and index (None = system default)
+        self.input_device_name = input_device_name or None
         self.input_device_index = input_device_index
         
         # Calculate analysis chunk size from chunk duration in ms
-        self.chunk_size = round(chunk_ms * sample_rate / 1000)
+        self.chunk_size = max(round(chunk_ms * sample_rate / 1000), 1)
         self.device_chunk_size = self.chunk_size
-        # Window size is solely determined by chunk size and number of chunks
-        self.window_samples = self.chunk_size * self.number_of_chunks
+
+        # Spectrum window size from the window length (independent of the chunk size)
+        self.spectrum_window_samples = max(round(window_ms * sample_rate / 1000), 1)
+
+        # Formant & pitch analysis window length from the analysis settings (window_ms in seconds)
+        formant_window_sec = float((analysis_config or {}).get('window_length', config.ANALYSIS_CONFIG.get('window_length', 0.05)))
+        self.formant_window_samples = max(int(round(formant_window_sec * sample_rate)), self.spectrum_window_samples)
+        
+        # Total stitched buffer size handed to Sound: max of spectrum window and formant window
+        self.window_samples = max(self.spectrum_window_samples, self.formant_window_samples)
+        
+        # Inform Sound of the exact spectrum slice length
+        self.analysis_config['spectrum_window_samples'] = self.spectrum_window_samples
         
         # Qt audio stream object (initialized in run())
         self.stream = None
@@ -113,7 +142,7 @@ class AudioProcessor(QThread):
         self.running = True
         
         # Calculate how many samples from previous chunks to keep for stitching
-        last_len = max((self.number_of_chunks - 1) * self.chunk_size, 0)
+        last_len = max(self.window_samples - self.chunk_size, 0)
         # Buffer to store samples from previous chunk for overlap-add
         self.last_samples = np.zeros(last_len)
         
@@ -131,19 +160,54 @@ class AudioProcessor(QThread):
         self.last_rate_update_time = time.perf_counter()
         self.current_capture_rate = 0.0
         self.current_analysis_rate = 0.0
-        # Device-rate/original recording buffer and analysis-rate/downsampled buffer.
+        # Device-rate/original recording and analysis-rate/downsampled recording, each kept as a
+        # list of int16 arrays (one per chunk) that is joined when the recording is collected
         self.raw_recording = []
         self.downsampled_recording = []
         self.record_original_stream = True
         self.record_downsampled_stream = False
         self.recording_sample_count = 0
-        self.downsampled_recording_sample_count = 0
+        # Device error / status broadcast to visualizers
+        self.device_status_message = None
+        # Reconnection state: remember which device we're supposed to be on so we can find
+        # it again by name if it drops out, and throttle how often we retry.
+        self._connected_device_name = None
+        self._preferred_device_name = None
+        self._last_reconnect_attempt = 0.0
+        self._reconnect_interval_sec = 2.0
+        # A stream that delivers no audio is treated as disconnected: Qt can go on listing a device
+        # after it has been unplugged, and opening it then succeeds without ever producing audio
+        self._no_audio_start_sec = 2.0  # Time allowed for the first audio after a stream is opened
+        self._no_audio_stall_sec = 1.0  # Time without audio on a stream that had been delivering it
+        self._failed_retry_sec = 5.0    # How long a device that failed is left alone
+        self._last_data_time = 0.0
+        self._stream_verified = False       # The current stream has delivered audio
+        self._stream_failed_before = False  # A stream failed earlier (for the "Reconnected" message)
+        # Second audio source used to check the preferred device while a fallback device is in use
+        self._probe_port = None
+        self._probe_stream = None
+        self._probe_started = 0.0
+        self._last_probe_time = 0.0
         # Polyphase resampler state (configured in run() once device format is known)
         self._resample_up = 1
         self._resample_down = 1
         self._polyphase_filters = None
-        self._polyphase_history = np.zeros(0, dtype=np.float32)
-        self._polyphase_phase = 0
+        self._polyphase_history = np.zeros(0, dtype=np.float64)
+        self._resample_delay = 0.0     # Filter group delay, in device samples
+        self._resample_in_count = 0    # Device samples fed to the resampler on the current stream
+        self._resample_out_count = 0   # Analysis samples produced on the current stream
+        # Resampled audio waiting to be cut into analysis chunks, and the position of each sample
+        # in the original recording (device samples since start_recording; NaN when not recording)
+        self._analysis_fifo = np.zeros(0, dtype=np.float32)
+        self._analysis_fifo_pos = np.zeros(0, dtype=np.float64)
+        # Sequence number of each analysis chunk, so the analysis thread can detect gaps
+        # (chunks dropped because the queue was full, or a new stream after a reconnect)
+        self._chunk_seq = 0
+        # Sample rate of the current recording, fixed by its first recorded chunk, so a
+        # reconnect to another device afterwards cannot change the rate reported for export
+        self._recording_rate = None
+        # Time (s) at which a device disconnect stopped the recording, until a visualizer takes it
+        self._recording_interrupted_at = None
 
     def _configure_resampler(self):
         """
@@ -151,8 +215,9 @@ class AudioProcessor(QThread):
 
         This is a native NumPy implementation (no scipy):
         - Rational ratio reduction (up/down)
-        - Windowed-sinc low-pass prototype with anti-aliasing
-        - Polyphase filter bank for efficient streaming resampling
+        - Kaiser-windowed sinc low-pass prototype: flat to 90% of the lower Nyquist frequency,
+          at least 70 dB of attenuation from that Nyquist frequency up (anti-aliasing)
+        - Polyphase filter bank, evaluated for a whole chunk at once
         """
         in_rate = int(max(1, self.device_sample_rate))
         out_rate = int(max(1, self.analysis_sample_rate))
@@ -161,99 +226,364 @@ class AudioProcessor(QThread):
         self._resample_up = max(1, out_rate // g)
         self._resample_down = max(1, in_rate // g)
 
+        # A new stream starts a new resampler timeline and discards any partial chunk
+        self._resample_in_count = 0
+        self._resample_out_count = 0
+        self._analysis_fifo = np.zeros(0, dtype=np.float32)
+        self._analysis_fifo_pos = np.zeros(0, dtype=np.float64)
+
         if self._resample_up == 1 and self._resample_down == 1:
             self._polyphase_filters = None
-            self._polyphase_history = np.zeros(0, dtype=np.float32)
-            self._polyphase_phase = 0
+            self._polyphase_history = np.zeros(0, dtype=np.float64)
+            self._resample_delay = 0.0
             return
 
-        # Prototype low-pass design in upsampled domain.
-        # cutoff_rel is relative to Nyquist of the upsampled intermediate sequence.
-        cutoff_rel = 1.0 / float(max(self._resample_up, self._resample_down))
-        taps_per_phase = 16
-        num_taps = 2 * taps_per_phase * self._resample_up + 1
+        # Prototype low-pass design in the upsampled domain. Frequencies are relative to the
+        # Nyquist frequency of the upsampled sequence; the lower of the input/output Nyquist
+        # frequencies is 1/M on that scale.
+        M = float(max(self._resample_up, self._resample_down))
+        atten_db = 70.0
+        passband_edge = 0.90 / M
+        stopband_edge = 1.00 / M
+        cutoff = 0.5 * (passband_edge + stopband_edge)
+        transition = stopband_edge - passband_edge
+        # Kaiser window length and shape for the requested attenuation and transition width
+        num_taps = int(math.ceil((atten_db - 7.95) / (2.285 * math.pi * transition))) | 1
+        beta = 0.1102 * (atten_db - 8.7)
         n = np.arange(num_taps, dtype=np.float64) - (num_taps - 1) / 2.0
-
-        # Windowed-sinc prototype (Hamming), scaled by up factor.
-        h = cutoff_rel * np.sinc(cutoff_rel * n)
-        h *= np.hamming(num_taps)
-        h_sum = float(np.sum(h))
-        if abs(h_sum) > 1e-12:
-            h /= h_sum
-        h *= self._resample_up
+        h = cutoff * np.sinc(cutoff * n) * np.kaiser(num_taps, beta)
+        # Unity DC gain after upsampling by up
+        h *= self._resample_up / np.sum(h)
 
         # Pad so prototype length is divisible by number of phases.
         pad = (-len(h)) % self._resample_up
         if pad:
             h = np.pad(h, (0, pad), mode='constant')
 
-        # Build polyphase bank: [phase, taps], reversed for newest-first history dot-product.
-        phase_filters = h.reshape(-1, self._resample_up).T[:, ::-1].astype(np.float32)
-        self._polyphase_filters = phase_filters
-        self._polyphase_history = np.zeros(phase_filters.shape[1], dtype=np.float32)
-        self._polyphase_phase = 0
+        # Polyphase bank [phase, k] = h[phase + k * up]; output y[m] = sum_k bank[p, k] * x[n - k]
+        # with n = (m * down) // up and p = (m * down) % up
+        self._polyphase_filters = h.reshape(-1, self._resample_up).T.copy()
+        self._polyphase_history = np.zeros(self._polyphase_filters.shape[1] - 1, dtype=np.float64)
+        # The linear-phase filter delays the output by (num_taps - 1) / 2 upsampled samples
+        self._resample_delay = (num_taps - 1) / 2.0 / self._resample_up
 
-        logger.info(f"Polyphase resampler configured: up={self._resample_up}, down={self._resample_down}, phases={phase_filters.shape[0]}, taps_per_phase={phase_filters.shape[1]}")
+        logger.info(f"Polyphase resampler configured: up={self._resample_up}, down={self._resample_down}, "
+                    f"phases={self._polyphase_filters.shape[0]}, taps_per_phase={self._polyphase_filters.shape[1]}")
 
     def _resample_chunk(self, normalized_samples):
         """
-        Resample one mono chunk using a streaming polyphase filter bank.
+        Resample one mono device chunk using the streaming polyphase filter bank.
 
-        Produces approximately chunk_ms worth of samples at analysis_sample_rate.
-        Output is padded/clipped to self.chunk_size to preserve downstream assumptions.
+        The number of output samples varies from chunk to chunk whenever the rate ratio does not
+        divide the chunk evenly; nothing is padded or dropped.
+
+        Returns:
+            tuple: (resampled float32 samples, float64 array giving each output sample's time on
+            the current stream in device samples, corrected for the filter delay)
         """
-        normalized_samples = np.asarray(normalized_samples, dtype=np.float32)
-        if normalized_samples.size == 0:
-            return np.zeros(self.chunk_size, dtype=np.float32)
-
-        if self.device_sample_rate == self.analysis_sample_rate and normalized_samples.size == self.chunk_size:
-            return normalized_samples
-
-        if normalized_samples.size == 1:
-            return np.full(self.chunk_size, normalized_samples[0], dtype=np.float32)
+        x = np.asarray(normalized_samples, dtype=np.float64)
+        start_in = self._resample_in_count
+        end_in = start_in + x.size
 
         if self._polyphase_filters is None:
-            resampled = normalized_samples
+            self._resample_in_count = end_in
+            self._resample_out_count += x.size
+            return x.astype(np.float32), np.arange(start_in, end_in, dtype=np.float64)
+
+        up, down = self._resample_up, self._resample_down
+        n_taps = self._polyphase_filters.shape[1]
+        # buf[j] holds device sample (start_in - (n_taps - 1) + j) of the current stream
+        buf = np.concatenate([self._polyphase_history, x])
+
+        # Every output sample whose newest input sample has now arrived: m * down / up < end_in
+        m_end = -(-(end_in * up) // down)
+        m = np.arange(self._resample_out_count, m_end, dtype=np.int64)
+        pos = m * down
+        n = pos // up
+        phase = pos % up
+        idx = (n - start_in + n_taps - 1)[:, None] - np.arange(n_taps)[None, :]
+        y = np.einsum('ij,ij->i', self._polyphase_filters[phase], buf[idx])
+
+        if n_taps > 1:
+            self._polyphase_history = buf[-(n_taps - 1):]
+        self._resample_in_count = end_in
+        self._resample_out_count = m_end
+
+        times = pos / float(up) - self._resample_delay
+        return np.clip(y, -1.0, 1.0).astype(np.float32), times
+
+    def _process_device_chunk(self, normalized_samples, samples):
+        """
+        Record one mono device chunk, resample it to the analysis rate, and queue complete
+        analysis chunks for the analysis thread.
+
+        Args:
+            normalized_samples (ndarray): float32 samples in [-1, 1] at the device rate.
+            samples (ndarray): The same samples as int16, for the original-rate recording.
+        """
+        # Preserve device-rate mono Int16 samples for high-fidelity export.
+        recorded_count = None
+        with self.recording_lock:
+            if self.recording_enabled:
+                if self._recording_rate is None:
+                    self._recording_rate = self.recording_sample_rate
+                self.recording_sample_count += len(samples)
+                if self.record_original_stream:
+                    self.raw_recording.append(np.array(samples, dtype=np.int16))
+                recorded_count = self.recording_sample_count
+
+        stream_end = self._resample_in_count + len(normalized_samples)
+        resampled, times = self._resample_chunk(normalized_samples)
+
+        # Position of each analysis sample in the original recording (device samples since
+        # start_recording): the newest recorded device sample is recorded_count - 1 and is
+        # stream sample stream_end - 1
+        if recorded_count is not None:
+            positions = recorded_count - (stream_end - times)
+            with self.recording_lock:
+                # Skip the few output samples (filter delay) that precede the recording start,
+                # so the downsampled recording starts at the same instant as the original
+                keep = positions >= 0
+                if self.record_downsampled_stream:
+                    downsampled_samples = np.clip(resampled[keep] * 32767.0, -32768, 32767).astype(np.int16)
+                    self.downsampled_recording.append(downsampled_samples)
         else:
-            outputs = []
-            for sample in normalized_samples:
-                # Newest-first history for fast dot product against phase filters.
-                if self._polyphase_history.size > 1:
-                    self._polyphase_history[1:] = self._polyphase_history[:-1]
-                self._polyphase_history[0] = sample
+            positions = np.full(resampled.size, np.nan)
 
-                # Emit 0..N output samples depending on rational phase progression.
-                while self._polyphase_phase < self._resample_up:
-                    coeffs = self._polyphase_filters[self._polyphase_phase]
-                    outputs.append(float(np.dot(coeffs, self._polyphase_history)))
-                    self._polyphase_phase += self._resample_down
-                self._polyphase_phase -= self._resample_up
+        self._analysis_fifo = np.concatenate([self._analysis_fifo, resampled])
+        self._analysis_fifo_pos = np.concatenate([self._analysis_fifo_pos, positions])
 
-            if len(outputs) == 0:
-                resampled = np.zeros(self.chunk_size, dtype=np.float32)
-            else:
-                resampled = np.asarray(outputs, dtype=np.float32)
+        # Cut the resampled stream into fixed-size analysis chunks
+        while self._analysis_fifo.size >= self.chunk_size:
+            chunk = self._analysis_fifo[:self.chunk_size]
+            last_pos = self._analysis_fifo_pos[self.chunk_size - 1]
+            self._analysis_fifo = self._analysis_fifo[self.chunk_size:]
+            self._analysis_fifo_pos = self._analysis_fifo_pos[self.chunk_size:]
 
-        # Keep exactly one analysis chunk per capture chunk to preserve queue timing.
-        if resampled.size > self.chunk_size:
-            resampled = resampled[:self.chunk_size]
-        elif resampled.size < self.chunk_size:
-            if resampled.size > 0:
-                resampled = np.pad(resampled, (0, self.chunk_size - resampled.size), mode='edge')
-            else:
-                resampled = np.zeros(self.chunk_size, dtype=np.float32)
+            # Time (s) of the chunk's last sample in the exported original WAV, or None
+            last_time = None if np.isnan(last_pos) else last_pos / float(self.recording_sample_rate)
+            seq = self._chunk_seq
+            self._chunk_seq += 1
 
-        return np.clip(resampled, -1.0, 1.0)
+            # Use put_nowait to avoid blocking the real-time audio capture loop
+            try:
+                self.raw_samples_queue.put_nowait((chunk, last_time, seq))
+                with self.recording_lock:
+                    self.captured_chunks_count += 1
+            except queue.Full:
+                # Analysis is slower than capture: drop this chunk. The analysis thread sees the
+                # gap in sequence numbers and does not stitch across it.
+                logger.warning("Raw samples queue full, dropping frame")
+
+    def _find_device_by_name(self, name):
+        """Look up a currently-available QAudioDevice by its description string, or None."""
+        if not name:
+            return None
+        for device in QMediaDevices.audioInputs():
+            if device.description() == name:
+                return device
+        return None
+
+    def _candidate_devices(self):
+        """
+        Input devices to try, best first: the preferred device, then the system default, then the
+        rest. Devices that failed to deliver audio in the last _failed_retry_sec are left out, so
+        the next attempt goes to another device.
+        """
+        now = time.perf_counter()
+        devices = []
+        preferred = self._find_device_by_name(self._preferred_device_name)
+        for device in [preferred, QMediaDevices.defaultAudioInput()] + list(QMediaDevices.audioInputs()):
+            if device is None or device.isNull():
+                continue
+            name = device.description()
+            if any(d.description() == name for d in devices):
+                continue
+            if now - AudioProcessor._failed_devices.get(name, -1e9) < self._failed_retry_sec:
+                continue
+            devices.append(device)
+        return devices
+
+    def _open_stream(self, input_device):
+        """
+        Open a QAudioSource stream on the given device, configuring the device sample rate,
+        chunk size, and resampler for it. Used both for the first connection and for
+        reconnecting after a disconnect (the device's native format may differ each time).
+
+        A stream that opens is not yet known to work: Qt can go on listing a device after it has
+        been unplugged, and opening it then succeeds without ever delivering audio. The capture
+        loop confirms the stream when audio arrives, and gives up on it otherwise.
+
+        Returns (audio_format, bytes_per_chunk) on success, or None if the stream failed to start.
+        """
+        # Always open the hardware in its preferred/native format (typically 44.1kHz or 48kHz)
+        # This ensures high-fidelity exports and avoids buggy OS/driver-level resampling conversions.
+        audio_format = input_device.preferredFormat()
+
+        # Keep the analysis rate unchanged and adapt the device capture chunking + resample in software.
+        device_sample_rate = audio_format.sampleRate() if audio_format.sampleRate() > 0 else self.analysis_sample_rate
+        device_chunk_size = max(round(self.chunk_ms * device_sample_rate / 1000), 1)
+
+        # Similarly, if the audio format is not Int16, we will need to convert raw bytes to Int16 ourselves in the capture loop.
+        # We will still request Int16, but if we get something else (e.g., Float), we can handle it in software.
+        bytes_per_frame = audio_format.bytesPerFrame()
+        if bytes_per_frame <= 0:
+            bytes_per_sample = {
+                QAudioFormat.SampleFormat.UInt8: 1,
+                QAudioFormat.SampleFormat.Int16: 2,
+                QAudioFormat.SampleFormat.Int32: 4,
+                QAudioFormat.SampleFormat.Float: 4,
+            }.get(audio_format.sampleFormat(), 2)
+            bytes_per_frame = bytes_per_sample * max(1, audio_format.channelCount())
+        bytes_per_chunk = device_chunk_size * bytes_per_frame
+
+        port = QAudioSource(input_device, audio_format)
+        port.setBufferSize(max(bytes_per_chunk * 8, 4096))
+        stream = port.start()
+        if stream is None:
+            return None
+
+        # The stream started: use its rate from here on. Recording always follows the true capture device rate.
+        self.device_sample_rate = device_sample_rate
+        self.device_chunk_size = device_chunk_size
+        self.recording_sample_rate = device_sample_rate
+        self._configure_resampler()
+        # Skip a sequence number so the analysis thread never stitches audio from different streams
+        self._chunk_seq += 1
+
+        self.port = port
+        self.stream = stream
+        self._connected_device_name = input_device.description()
+        self._last_data_time = time.perf_counter()
+        self._stream_verified = False
+        logger.info(
+            f"Audio stream opened: device='{self._connected_device_name}' "
+            f"{self.device_sample_rate}Hz/{self.device_chunk_size} samples, analysis={self.analysis_sample_rate}Hz/{self.chunk_size} samples"
+        )
+        return audio_format, bytes_per_chunk
+
+    def _close_stream(self):
+        """Stop and forget the current stream (if any)."""
+        try:
+            if self.port:
+                self.port.stop()
+        except Exception:
+            pass
+        self.port = None
+        self.stream = None
+
+    def _stream_failed(self):
+        """
+        The current stream reported an error or stopped delivering audio. End any recording here
+        (audio from another device is never spliced in), close the stream, and leave the device
+        alone for _failed_retry_sec so the next attempt goes to another device.
+        """
+        name = self._connected_device_name
+        AudioProcessor._failed_devices[name] = time.perf_counter()
+        self._interrupt_recording()
+        if self._stream_verified:
+            self.device_status_message = f"Audio device '{name}' disconnected - attempting to reconnect"
+        else:
+            self.device_status_message = f"No audio from '{name}' - trying another device"
+        self._stream_failed_before = True
+        self._close_stream()
+        self._last_reconnect_attempt = 0.0  # try another device straight away
+
+    def _announce_stream(self):
+        """Tell the user which device is in use, once a newly opened stream has delivered audio."""
+        name = self._connected_device_name
+        if self._preferred_device_name and name != self._preferred_device_name:
+            self.device_status_message = f"'{self._preferred_device_name}' unavailable - using '{name}'"
+            logger.warning(f"Preferred audio device '{self._preferred_device_name}' unavailable; using '{name}'")
+        elif self._stream_failed_before:
+            self.device_status_message = f"Reconnected to '{name}'"
+            logger.info(f"Reconnected to preferred audio device '{name}'")
+        self._stream_failed_before = False
+
+    def _maybe_reconnect(self):
+        """
+        With no stream open, try the candidate devices in order (at most once every
+        _reconnect_interval_sec) until one opens. If the preferred device is missing or has just
+        failed, this falls back to another device so capture can resume.
+
+        Returns (audio_format, bytes_per_chunk) if a stream was opened, else None.
+        """
+        now = time.perf_counter()
+        if now - self._last_reconnect_attempt < self._reconnect_interval_sec:
+            return None
+        self._last_reconnect_attempt = now
+
+        for device in self._candidate_devices():
+            opened = self._open_stream(device)
+            if opened is not None:
+                return opened
+
+        # Keep a message that has not been shown yet (e.g. that the device just disconnected)
+        if not self.device_status_message:
+            waiting_for = f" - waiting for '{self._preferred_device_name}'" if self._preferred_device_name else ""
+            self.device_status_message = f"No working audio input device{waiting_for}"
+        return None
+
+    def _stop_probe(self):
+        """Stop the second audio source used to check the preferred device (if any)."""
+        try:
+            if self._probe_port:
+                self._probe_port.stop()
+        except Exception:
+            pass
+        self._probe_port = None
+        self._probe_stream = None
+
+    def _probe_preferred(self):
+        """
+        While a fallback device is in use and nothing is being recorded, look for the preferred
+        device by name every _reconnect_interval_sec. If it is listed, check that it delivers audio
+        with a second audio source, so the current stream is not disturbed, and switch back to it
+        once it does.
+
+        Returns (audio_format, bytes_per_chunk) if the active stream just changed, else None.
+        """
+        if self.recording_enabled:
+            self._stop_probe()  # never switch devices during a recording; switch back once it has stopped
+            return None
+
+        now = time.perf_counter()
+        name = self._preferred_device_name
+        if self._probe_port is None:
+            if now - self._last_probe_time < self._reconnect_interval_sec:
+                return None
+            self._last_probe_time = now
+            device = self._find_device_by_name(name)
+            if device is None or now - AudioProcessor._failed_devices.get(name, -1e9) < self._failed_retry_sec:
+                return None
+            self._probe_port = QAudioSource(device, device.preferredFormat())
+            self._probe_stream = self._probe_port.start()
+            self._probe_started = now
+            return None
+
+        if self._probe_stream is not None and self._probe_stream.bytesAvailable() > 0:
+            # The preferred device is delivering audio again: switch back to it
+            self._stop_probe()
+            device = self._find_device_by_name(name)
+            if device is None:
+                return None
+            AudioProcessor._failed_devices.pop(name, None)
+            self._close_stream()
+            self._stream_failed_before = True  # so that "Reconnected" is shown
+            return self._open_stream(device)
+
+        if now - self._probe_started > self._no_audio_start_sec:
+            # Listed, but not delivering audio (e.g. still unplugged): leave it alone for a while
+            self._stop_probe()
+            AudioProcessor._failed_devices[name] = now
+        return None
 
     def run(self):
         """
         Open the audio stream and continuously read samples into the raw queue for analysis.
 
-        This method runs in the thread and manages audio device initialization, error handling, 
-        and resource cleanup. It also starts the analysis worker thread.
-
-        Raises:
-            RuntimeError: If no audio device is available or stream initialization fails.
+        This method runs in the thread and manages audio device selection, reconnection, error
+        handling, and resource cleanup. It also starts the analysis worker thread.
         """
         try:
             # Ensure a Qt application exists before using QtMultimedia APIs
@@ -264,83 +594,88 @@ class AudioProcessor(QThread):
             # Check if any audio input devices are available
             inputs = QMediaDevices.audioInputs()
             if not inputs:
-                raise RuntimeError("No audio input devices found")
+                logger.error("No audio input devices found")
 
-            # Select requested input device by index when provided, otherwise use system default
-            if self.input_device_index is not None and 0 <= self.input_device_index < len(inputs):
-                input_device = inputs[self.input_device_index]
-            else:
-                input_device = QMediaDevices.defaultAudioInput()
-                if input_device is None or input_device.isNull():
-                    input_device = inputs[0]
+            # The device to use and keep returning to: the requested one by name (stable), else by
+            # index (only used when no name was saved), otherwise the system default. If it is
+            # missing or delivers no audio, capture starts on another device and switches to this
+            # one when it works (never during a recording).
+            preferred = self.input_device_name
+            if preferred is None and self.input_device_index is not None and 0 <= self.input_device_index < len(inputs):
+                preferred = inputs[self.input_device_index].description()
+            if preferred is None:
+                default_device = QMediaDevices.defaultAudioInput()
+                if default_device is not None and not default_device.isNull():
+                    preferred = default_device.description()
+                elif inputs:
+                    preferred = inputs[0].description()
+            self._preferred_device_name = preferred
 
-            # Save requested analysis rate before any device override
-            original_sample_rate = self.analysis_sample_rate
-            
-            # Always open the hardware in its preferred/native format (typically 44.1kHz or 48kHz)
-            # This ensures high-fidelity exports and avoids buggy OS/driver-level resampling conversions.
-            audio_format = input_device.preferredFormat()
-
-            # Keep the analysis rate unchanged and adapt the device capture chunking + resample in software.
-            if audio_format.sampleRate() > 0:
-                self.device_sample_rate = audio_format.sampleRate()
-                self.device_chunk_size = max(round(self.chunk_ms * self.device_sample_rate / 1000), 1)
-                logger.info(f"Device rate {self.device_sample_rate} differs from requested analysis rate {original_sample_rate}; using software resampling")
-            else:
-                self.device_sample_rate = self.analysis_sample_rate
-                self.device_chunk_size = self.chunk_size
-
-            # Recording always follows the true capture device rate.
-            self.recording_sample_rate = self.device_sample_rate
-
-            self._configure_resampler()
-
-            # Similarly, if the audio format is not Int16, we will need to convert raw bytes to Int16 ourselves in the capture loop.
-            # We will still request Int16, but if we get something else (e.g., Float), we can handle it in software.
-            bytes_per_frame = audio_format.bytesPerFrame()
-            if bytes_per_frame <= 0:
-                bytes_per_sample = {
-                    QAudioFormat.SampleFormat.UInt8: 1,
-                    QAudioFormat.SampleFormat.Int16: 2,
-                    QAudioFormat.SampleFormat.Int32: 4,
-                    QAudioFormat.SampleFormat.Float: 4,
-                }.get(audio_format.sampleFormat(), 2)
-                bytes_per_frame = bytes_per_sample * max(1, audio_format.channelCount())
-            bytes_per_chunk = self.device_chunk_size * bytes_per_frame
+            # The stream is opened by the capture loop below, which also reopens it when needed
+            audio_format = None
+            bytes_per_chunk = 0
             pending_audio_bytes = bytearray()
-            
+
             # Start the analysis worker thread that consumes raw samples and produces Sound objects
             self.analysis_thread = threading.Thread(target=self.analyze_worker, daemon=True)
             self.analysis_thread.start()
             logger.info("Analysis worker thread started")
-            
-            # Open an audio input stream from the specified or default microphone
-            self.port = QAudioSource(input_device, audio_format)
-            self.port.setBufferSize(max(bytes_per_chunk * 8, 4096))
-            self.stream = self.port.start()
-            if self.stream is None:
-                raise RuntimeError("Failed to open audio input stream")
-            
-            logger.info(f"Audio stream opened: device={self.device_sample_rate}Hz/{self.device_chunk_size} samples, analysis={self.analysis_sample_rate}Hz/{self.chunk_size} samples")
-            
+
             # Main capture loop - runs until self.running is set to False
             while self.running:
                 # Pump the event loop for the current thread so QAudioSource can receive audio data
                 QCoreApplication.processEvents()
 
+                # Check if hardware audio input reported an error or stopped unexpectedly
+                if self.port is not None:
+                    err = self.port.error()
+                    err_val = getattr(err, 'value', err)
+                    if err not in (QAudio.Error.NoError, QAudio.NoError, 0) and err_val != 0:
+                        logger.warning(f"Audio input device error: {err}")
+                        self._stream_failed()
+
+                # With no stream, try to open one (the preferred device first). On a fallback
+                # device, keep checking whether the preferred device is back.
+                opened = None
+                if self.stream is None:
+                    opened = self._maybe_reconnect()
+                elif self._connected_device_name != self._preferred_device_name:
+                    opened = self._probe_preferred()
+                if opened is not None:
+                    audio_format, bytes_per_chunk = opened
+                    pending_audio_bytes = bytearray()
+
+                if self.stream is None:
+                    # No audio device available at all yet; keep polling without busy-looping
+                    time.sleep(0.05)
+                    continue
+
                 # Is audio available?
                 available = self.stream.bytesAvailable()
                 if available <= 0:
-                    time.sleep(0.001)
+                    # A working device delivers audio continuously, even in silence. None for this
+                    # long means the device is gone, although Qt reported no error
+                    limit = self._no_audio_stall_sec if self._stream_verified else self._no_audio_start_sec
+                    if time.perf_counter() - self._last_data_time > limit:
+                        logger.warning(f"No audio from '{self._connected_device_name}' for {limit:g} s; treating it as disconnected")
+                        self._stream_failed()
+                    else:
+                        time.sleep(0.001)
                     continue
-                
-                # If audio is available, read it into a bytearray buffer. We may get more than one chunk's worth of audio, 
+
+                # If audio is available, read it into a bytearray buffer. We may get more than one chunk's worth of audio,
                 # so we need to buffer it until we have enough for at least one chunk.
                 data = self.stream.read(available)
                 if not data:
                     time.sleep(0.001)
                     continue
-                
+
+                # Audio has arrived: the stream works
+                self._last_data_time = time.perf_counter()
+                if not self._stream_verified:
+                    self._stream_verified = True
+                    self._announce_stream()
+
                 # Append new audio bytes to the pending buffer and process in chunk-sized pieces
                 pending_audio_bytes.extend(bytes(data))
 
@@ -351,7 +686,7 @@ class AudioProcessor(QThread):
                     raw_chunk = bytes(pending_audio_bytes[:bytes_per_chunk])
                     del pending_audio_bytes[:bytes_per_chunk]
 
-                    # Interpret raw audio bytes according to the sample format 
+                    # Interpret raw audio bytes according to the sample format
                     # and convert to normalized float32 samples
                     sample_format = audio_format.sampleFormat()
                     channels = max(1, audio_format.channelCount())
@@ -377,46 +712,16 @@ class AudioProcessor(QThread):
                     else:
                         raise RuntimeError(f"Unsupported audio sample format: {sample_format}")
 
-                    # If the audio is stereo, we take only the first channel for analysis and recording to keep it simple.                    
+                    # If the audio is stereo, we take only the first channel for analysis and recording to keep it simple.
                     if channels > 1:
                         normalized_samples = normalized_samples.reshape(-1, channels)[:, 0]
                         samples = samples.reshape(-1, channels)[:, 0]
 
-                    # Preserve device-rate mono Int16 samples for high-fidelity export.
-                    if self.recording_enabled:
-                        with self.recording_lock:
-                            self.recording_sample_count += len(samples)
-                            if self.record_original_stream:
-                                self.raw_recording.extend(samples)
-                
-                    # Resample from device rate to analysis rate when necessary
-                    normalized_samples = self._resample_chunk(normalized_samples)
+                    # Record, resample to the analysis rate, and queue analysis chunks
+                    self._process_device_chunk(normalized_samples, samples)
 
-                    # Preserve the downsampled/analysis stream when requested.
-                    if self.recording_enabled:
-                        with self.recording_lock:
-                            self.downsampled_recording_sample_count += len(normalized_samples)
-                            if self.record_downsampled_stream:
-                                downsampled_samples = np.clip(
-                                    normalized_samples * 32767.0,
-                                    -32768,
-                                    32767
-                                ).astype(np.int16)
-                                self.downsampled_recording.extend(downsampled_samples)
-
-                    # Try to add normalized samples to the raw queue for analysis
-                    try:
-                        # Use put_nowait to avoid blocking the real-time audio capture loop
-                        self.raw_samples_queue.put_nowait(normalized_samples)
-                        with self.recording_lock:
-                            self.captured_chunks_count += 1
-                    except queue.Full:
-                        # Queue is full - drop this frame and log a warning
-                        # This happens if analysis is slower than audio capture
-                        logger.warning("Raw samples queue full, dropping frame")
-                    
         except RuntimeError as e:
-            # Handle runtime errors (e.g., no audio devices)
+            # Handle runtime errors (e.g., an unsupported sample format)
             logger.error(f"Runtime error: {e}")
             self.running = False
         except Exception as e:
@@ -432,6 +737,7 @@ class AudioProcessor(QThread):
         Ensures that resources are released even if an error occurs.
         """
         try:
+            self._stop_probe()
             if self.port:
                 self.port.stop()
             self.stream = None
@@ -462,17 +768,30 @@ class AudioProcessor(QThread):
         Runs in a separate thread to prevent analysis from blocking audio capture.
         """
         logger.info("Analysis worker thread started")
-        
+
+        # Sequence number of the previous chunk, and how many contiguous samples the stitched
+        # window currently holds (zero-padding at startup or after a gap does not count)
+        last_seq = None
+        contiguous_samples = 0
+
         try:
             while self.running:
                 # Try to get the next chunk of normalized audio samples from the raw queue
                 try:
                     # Wait up to 0.1 seconds for samples to be available
-                    current_samples = self.raw_samples_queue.get(timeout=0.1)
+                    current_samples, chunk_last_time, seq = self.raw_samples_queue.get(timeout=0.1)
                 except queue.Empty:
                     # If no samples available within timeout, continue to avoid fabricating silence
                     continue
-                
+
+                # A gap in sequence numbers means chunks were dropped (queue full) or the stream
+                # was reopened: discard the history instead of stitching across the gap
+                if last_seq is not None and seq != last_seq + 1:
+                    self.last_samples = np.zeros(max(self.window_samples - self.chunk_size, 0))
+                    contiguous_samples = 0
+                last_seq = seq
+                contiguous_samples = min(contiguous_samples + len(current_samples), self.window_samples)
+
                 # Concatenate previous samples with current samples to create overlapping window
                 # This improves temporal resolution and reduces edge effects in analysis
                 samples_output = np.concatenate([self.last_samples, current_samples], axis=0)
@@ -487,20 +806,36 @@ class AudioProcessor(QThread):
                     samples_output = np.pad(samples_output, (pad_len, 0))
 
                 # Update last_samples buffer for next iteration
-                last_len = max((self.number_of_chunks - 1) * self.chunk_size, 0)
+                last_len = max(self.window_samples - self.chunk_size, 0)
                 if last_len > 0:
-                    # Keep the last (number_of_chunks - 1) chunks for stitching
+                    # Keep the historical buffer for overlap stitching
                     self.last_samples = samples_output[-last_len:]
                 else:
                     # No stitching needed if only one chunk
                     self.last_samples = np.zeros(0)
-                
+
+                # Only analyze windows made entirely of contiguous audio (not the zero-padded
+                # windows at startup or right after a gap)
+                if contiguous_samples < self.window_samples:
+                    continue
+
                 # Create a Sound object with the windowed samples and perform analysis
                 # This is where LPC and pitch tracking happen (relatively expensive operations)
-                capture_timestamp = time.perf_counter()
-                sound_object = Sound(samples_output, sample_rate=self.sample_rate, **self.analysis_config)
-                sound_object.capture_timestamp = capture_timestamp
-                
+                try:
+                    sound_object = Sound(samples_output, sample_rate=self.sample_rate, **self.analysis_config)
+                except Exception as e:
+                    # Skip this frame but keep analyzing; one bad frame must not stop the session.
+                    # Log each distinct error once so a persistent failure doesn't flood the log.
+                    if str(e) != getattr(self, '_last_analysis_error', None):
+                        self._last_analysis_error = str(e)
+                        logger.error(f"Analysis failed for a frame, skipping it: {e}")
+                    continue
+                # Time (s) of the analysis window's center relative to the start of the recording,
+                # derived from the capture-thread sample count so it lines up with the exported WAV
+                if chunk_last_time is not None:
+                    half_window_sec = (self.window_samples - 1) / 2.0 / float(self.sample_rate)
+                    sound_object.recording_time = max(0.0, chunk_last_time - half_window_sec)
+
                 # Try to queue the analyzed Sound object for the main thread to consume
                 try:
                     # Use put_nowait to avoid blocking the analysis thread
@@ -518,48 +853,6 @@ class AudioProcessor(QThread):
         finally:
             logger.info("Analysis worker thread exiting")
 
-    def get_sound(self, timeout=0.1):
-        """
-        Retrieve the next analyzed Sound object from the analysis queue.
-
-        Sound objects contain extracted pitch, formants, and other features computed in the analysis worker thread.
-
-        Args:
-            timeout (float): Maximum seconds to wait for a Sound object. Use 0.001 for fast polling (e.g., spectrogram), or 0.1 for blocking retrieval (e.g., formant tracking).
-
-        Returns:
-            Sound: A Sound object with pitch and formant analysis already complete. If no analyzed sounds are available within timeout, returns a silence Sound object.
-        """
-        try:
-            # Wait up to timeout seconds for an analyzed Sound object to be available
-            sound_object = self.analyzed_sounds_queue.get(timeout=timeout)
-            return sound_object
-        except queue.Empty:
-            # If no analyzed sounds available within timeout, return a silence Sound
-            logger.debug("No analyzed sounds available (timeout)")
-            # Create an empty Sound object with silence
-            empty_sound = Sound(np.zeros(self.window_samples, dtype=np.float32), 
-                               sample_rate=self.sample_rate, **self.analysis_config)
-            return empty_sound
-
-    def get_samples(self):
-        """
-        Retrieve raw normalized audio samples directly from the capture thread, without analysis.
-
-        Useful for visualization or custom processing. If no samples are available within timeout, returns silence.
-
-        Returns:
-            ndarray: Normalized float32 audio samples in range [-1.0, 1.0], or zeros if no samples are available within timeout.
-        """
-        try:
-            # Wait up to 0.1 seconds for raw samples to be available
-            samples = self.raw_samples_queue.get(timeout=0.1)
-            return samples
-        except queue.Empty:
-            # If no samples available within timeout, return silence
-            logger.debug("No raw samples available (timeout)")
-            return np.zeros(self.chunk_size, dtype=np.float32)
-
     def start_recording(self, record_original=True, record_downsampled=False):
         """
         Begin buffering audio samples for export.
@@ -574,9 +867,10 @@ class AudioProcessor(QThread):
             self.raw_recording = []
             self.downsampled_recording = []
             self.recording_sample_count = 0
-            self.downsampled_recording_sample_count = 0
             self.record_original_stream = bool(record_original)
             self.record_downsampled_stream = bool(record_downsampled)
+            self._recording_rate = None
+            self._recording_interrupted_at = None
             # Enable recording flag even if neither stream is saved so timing still works.
             self.recording_enabled = True
 
@@ -589,43 +883,50 @@ class AudioProcessor(QThread):
             # Disable recording flag (audio thread will stop saving samples)
             self.recording_enabled = False
 
-    def get_recording(self):
-        """
-        Return the buffered device-rate/original recording as a NumPy array.
-        Kept for backward compatibility with existing callers.
-        """
-        # Use lock to ensure thread-safe access to recording buffer
+    def _interrupt_recording(self):
+        """Stop the recording because the audio device dropped out, remembering when it stopped.
+        If nothing has been recorded yet (the device never delivered audio), the recording simply
+        starts when a working device is found."""
         with self.recording_lock:
-            # Convert list of samples to numpy array and return a copy
-            return np.array(self.raw_recording, dtype=np.int16)
+            if self.recording_enabled and self.recording_sample_count > 0:
+                self.recording_enabled = False
+                self._recording_interrupted_at = self.recording_sample_count / float(self.get_original_recording_sample_rate())
+                logger.warning(f"Recording stopped at {self._recording_interrupted_at:.2f} s: audio device disconnected")
+
+    def take_recording_interruption(self):
+        """
+        Return the time (s) at which a device disconnect stopped the recording, or None.
+        Each interruption is returned once, so the visualizer handles it once.
+        """
+        with self.recording_lock:
+            interrupted_at = self._recording_interrupted_at
+            self._recording_interrupted_at = None
+            return interrupted_at
+
+    @staticmethod
+    def _joined(chunks):
+        """Join a list of recorded chunks into a list holding one array. The joined array replaces
+        the chunks, so a long recording is not held twice."""
+        return [np.concatenate(chunks)] if len(chunks) > 1 else chunks
 
     def get_original_recording(self):
-        """Return a copy of the buffered device-rate/original recording."""
+        """Return the buffered device-rate/original recording as one int16 array."""
         with self.recording_lock:
-            return np.array(self.raw_recording, dtype=np.int16)
+            self.raw_recording = self._joined(self.raw_recording)
+            return self.raw_recording[0] if self.raw_recording else np.zeros(0, dtype=np.int16)
 
     def get_downsampled_recording(self):
-        """Return a copy of the buffered analysis-rate/downsampled recording."""
+        """Return the buffered analysis-rate/downsampled recording as one int16 array."""
         with self.recording_lock:
-            return np.array(self.downsampled_recording, dtype=np.int16)
+            self.downsampled_recording = self._joined(self.downsampled_recording)
+            return self.downsampled_recording[0] if self.downsampled_recording else np.zeros(0, dtype=np.int16)
 
-    def get_recording_sample_count(self):
-        """
-        Return the number of device-rate samples captured during the current recording session.
-        """
-        # Use lock to ensure thread-safe access to recording buffer
-        with self.recording_lock:
-            return self.recording_sample_count
-
-    def get_recording_sample_rate(self):
+    def get_original_recording_sample_rate(self):
         """
         Return the sample rate of the buffered device-rate/original recording stream.
         """
-        return int(self.recording_sample_rate)
+        return int(self._recording_rate or self.recording_sample_rate)
 
-    def get_original_recording_sample_rate(self):
-        """Return the sample rate of the buffered device-rate/original recording stream."""
-        return int(self.recording_sample_rate)
 
     def get_downsampled_recording_sample_rate(self):
         """Return the sample rate of the buffered analysis-rate/downsampled recording stream."""

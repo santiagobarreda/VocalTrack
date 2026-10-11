@@ -1,0 +1,92 @@
+{
+  "name": "American English Vowels (Hillenbrand et al., 1995)",
+  "description": "Acoustic characteristics of American English vowels produced in /hVd/ syllables, averaged across 45 men, 48 women, and 46 children at steady state.",
+  "language": "American English",
+  "source": "Hillenbrand, J., Getty, L. A., Clark, M. J., & Wheeler, K. (1995). Acoustic characteristics of American English vowels. The Journal of the Acoustical Society of America, 97(5), 3099-3111.",
+  "vowels": [
+    {
+      "symbol": "i",
+      "name": "Close front unrounded",
+      "description": "Close front unrounded vowel (e.g., 'heed')",
+      "f1": 410.33,
+      "f2": 2721.33
+    },
+    {
+      "symbol": "ɪ",
+      "name": "Near-close front unrounded",
+      "description": "Near-close front unrounded vowel (e.g., 'hid')",
+      "f1": 473.67,
+      "f2": 2317.0
+    },
+    {
+      "symbol": "e",
+      "name": "Close-mid front unrounded",
+      "description": "Close-mid front unrounded vowel (e.g., 'hayed')",
+      "f1": 525.33,
+      "f2": 2425.0
+    },
+    {
+      "symbol": "ɛ",
+      "name": "Open-mid front unrounded",
+      "description": "Open-mid front unrounded vowel (e.g., 'head')",
+      "f1": 686.67,
+      "f2": 2041.33
+    },
+    {
+      "symbol": "æ",
+      "name": "Near-open front unrounded",
+      "description": "Near-open front unrounded vowel (e.g., 'had')",
+      "f1": 658.0,
+      "f2": 2267.33
+    },
+    {
+      "symbol": "ɑ",
+      "name": "Open back unrounded",
+      "description": "Open back unrounded vowel (e.g., 'hod')",
+      "f1": 902.0,
+      "f2": 1524.0
+    },
+    {
+      "symbol": "ɔ",
+      "name": "Open-mid back rounded",
+      "description": "Open-mid back rounded vowel (e.g., 'hawed')",
+      "f1": 745.33,
+      "f2": 1114.33
+    },
+    {
+      "symbol": "o",
+      "name": "Close-mid back rounded",
+      "description": "Close-mid back rounded vowel (e.g., 'hoed')",
+      "f1": 549.67,
+      "f2": 1027.33
+    },
+    {
+      "symbol": "ʊ",
+      "name": "Near-close back rounded",
+      "description": "Near-close back rounded vowel (e.g., 'hood')",
+      "f1": 518.67,
+      "f2": 1279.0
+    },
+    {
+      "symbol": "u",
+      "name": "Close back rounded",
+      "description": "Close back rounded vowel (e.g., 'who'd')",
+      "f1": 443.67,
+      "f2": 1149.0
+    },
+    {
+      "symbol": "ʌ",
+      "name": "Open-mid back unrounded",
+      "description": "Open-mid back unrounded vowel (e.g., 'hud')",
+      "f1": 708.33,
+      "f2": 1390.67
+    },
+    {
+      "symbol": "ɝ",
+      "name": "Rhotacized mid central",
+      "description": "Rhotacized mid central vowel (e.g., 'heard')",
+      "f1": 527.67,
+      "f2": 1562.0
+    }
+  ]
+}

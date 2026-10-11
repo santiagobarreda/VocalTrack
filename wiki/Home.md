@@ -3,93 +3,31 @@
 
 # VocalTrack Wiki
 
-Welcome to the VocalTrack documentation. This wiki provides comprehensive guides for installation, configuration, usage, and troubleshooting of VocalTrack's real-time speech visualization toolkit.
+VocalTrack is a Python application for real-time speech visualization. It has four display modes: LiveVowel (F1/F2 vowel space), LivePitch (f0 contour), LiveSpectrogram (scrolling spectrogram) and LiveSpectrum (power spectrum).
 
-## Documentation Pages
+## Pages
 
-- [Installation and Launch](Installation-and-Launch) - Setup instructions and first-time launch
-- [Basic Usage](Basic-Usage) - Workflow overview and common tasks
-- [Mode Guides](Mode-Guides) - Detailed guides for each visualization mode
-- [Settings Reference](Settings-Reference) - Complete parameter documentation
-- [Outputs and File Formats](Outputs-and-File-Formats) - Export file specifications
-- [Benchmarking and Performance](Benchmarking-and-Performance) - Accuracy and timing benchmarks, and real-time performance monitor
-- [Troubleshooting](Troubleshooting) - Common issues and solutions
+| Page | Contents |
+|------|----------|
+| [Installation and Launch](Installation-and-Launch) | Requirements, installation, microphone permissions, starting the launcher |
+| [Basic Usage](Basic-Usage) | The steps of a session, from launch to saved files |
+| [Mode Guides](Mode-Guides) | What each mode shows, its keyboard and mouse controls, and how it records |
+| [Settings Reference](Settings-Reference) | Every setting with its default and effect, the settings file, and the analysis methods |
+| [Outputs and File Formats](Outputs-and-File-Formats) | File names, WAV and CSV formats, and the vowel template format |
+| [Benchmarking and Performance](Benchmarking-and-Performance) | Comparing analysis methods against Parselmouth, and the performance monitor |
+| [Troubleshooting](Troubleshooting) | Problems and fixes, and known limitations |
+| [Formant Tracking Troubleshooting & Calibration](Formant-Tracking-Troubleshooting) | Checking the formant settings for a speaker with the LPC overlay in LiveSpectrum |
 
-## Quick Start
+## Quick start
 
-1. **Create and activate a virtual environment (Recommended):**
-   - **Windows:** `python -m venv vocaltrack-env` then `vocaltrack-env\Scripts\activate`
-   - **macOS/Linux:** `python3 -m venv vocaltrack-env` then `source vocaltrack-env/bin/activate`
-
-2. **Install dependencies:**
-   *(Use `python -m pip` instead of bare `pip` on Windows to avoid file-locking crashes during upgrade)*
-   ```bash
-   python -m pip install --upgrade pip setuptools wheel
-   pip install -r requirements.txt
-   ```
-
-3. **Launch the GUI:**
-   ```bash
-   python vocaltrack.py
-   ```
-
-3. **Configure settings:**
-   - Open **Recording Settings** and select your microphone
-   - Open **Analysis Settings** and adjust f0 range for your voice
-   - Configure mode-specific settings as needed
-
-4. **Launch a visualization mode:**
-   - **LiveVowel**: Real-time F1/F2 vowel space tracking
-   - **LivePitch**: f0 pitch contour visualization
-   - **LiveSpectrogram**: Scrolling wideband spectrogram
-   - **LiveSpectrum**: Real-time FFT spectrum analyzer
-
-## What VocalTrack Produces
-
-**Audio + Data (Exported on Exit):**
-- LiveVowel: original and/or downsampled WAV audio + CSV with timestamped F1/F2/F3 formants
-- LivePitch: original and/or downsampled WAV audio + CSV with timestamped f0 pitch values
-
-**Visualization Only:**
-- LiveSpectrogram: Real-time spectrogram display
-- LiveSpectrum: Real-time spectrum display
-
-**Benchmarking Output:**
-- Accuracy reports: CSV comparisons and markdown summaries
-- Timing reports: Performance metrics for different analysis methods
-- Audio used for benchmarking saved as WAV file
-- All saved to `benchmarking/` folder
-
-## Settings Persistence
-
-User settings are automatically saved to:
-
-```
-.VocalTrack_settings.json
+```bash
+python -m venv vocaltrack-env                      # python3 on macOS/Linux
+vocaltrack-env\Scripts\activate                    # macOS/Linux: source vocaltrack-env/bin/activate
+python -m pip install --upgrade pip setuptools wheel
+pip install -r requirements.txt
+python vocaltrack.py
 ```
 
-This file stores:
-- Analysis parameters (f0 range, max formant, window size)
-- Smoother configuration (1-Euro filter parameters)
-- Display settings for all modes (ranges, scales, colors)
-- Audio input device selection
+Then select a microphone in **Data Settings** and click a mode button. See [Installation and Launch](Installation-and-Launch) and [Basic Usage](Basic-Usage).
 
-Settings are loaded on startup and applied to both launcher dialogs and runtime configuration.
-
-## System Requirements
-
-- Python >=3.9 and <3.15
-- Working (preferably head mounted) microphone/audio input
-- OS audio permissions enabled
-- ~100MB disk space for installation (mostly of dependencies)
-- Real-time processing requires modern CPU (2GHz+ recommended)
-
-## Key Features
-
-✓ Four specialized visualization modes for different analysis needs  
-✓ Adaptive 1-Euro smoothing for stable yet responsive tracking  
-✓ Native and Parselmouth analysis backends  
-✓ Configurable frequency scales (log/linear)  
-✓ Built-in benchmarking tools  
-✓ Automated CSV + WAV export  
-✓ Persistent settings across sessions
+Videos showing installation and usage are in a [YouTube playlist](https://www.youtube.com/playlist?list=PLcX__4_5WSTg).

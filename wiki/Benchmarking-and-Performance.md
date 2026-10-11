@@ -1,126 +1,64 @@
 # Benchmarking and Performance
 
-VocalTrack includes both offline benchmarking tools for validating analysis accuracy, and a real-time performance monitor for diagnostics during active tracking.
+Two tools: a benchmark that compares analysis methods on a recording, and a monitor that shows real-time performance while a mode is running.
 
----
+## Benchmarking
 
-## Offline Benchmarking
+The benchmark records about 15 seconds of speech and runs a chosen formant method and pitch method (built-in or custom) and Parselmouth on the same frames. It reports how closely they agree and how long each takes.
 
-VocalTrack includes a built-in benchmarking tool accessible from the launcher. This tool compares analysis methods (native or custom vs. Parselmouth) for accuracy and timing performance. The system implements separate specialized functions for each analysis backend: the native implementations use standard signal processing algorithms (LPC for formants, autocorrelation for pitch), while the Parselmouth backend delegates to Praat's well-established algorithms.
+Parselmouth is the reference, not ground truth. It also makes errors, and which method is right depends on the recording and the settings, so check the audio where the methods disagree.
 
-Benchmarking is useful for validating measurement accuracy and optimizing analysis settings for your use case. Don't assume that 'errors' mean that Parselmouth is right and the alternate implementations are 'wrong'. Differences require further inspection, but in initial testing, I found plenty of cases where Parselmouth was wrong. It all depends on the specific recording and the settings used.
+### Running it
 
-### Quick Start
+1. Click **Benchmarking** in the launcher.
+2. Select the methods to compare. The dialog preselects those chosen in Analysis Settings.
+   - Formants: `lpc`, `wlp`, or `custom` (if implemented)
+   - Pitch: `autocorrelation`, `yin`, or `custom` (if implemented)
+3. Click **Run** and produce vowels continuously for the whole recording. Silences reduce the number of frames that can be compared.
 
-1. Launch VocalTrack:
-   ```bash
-   python vocaltrack.py
-   ```
+The benchmark uses the microphone selected in Data Settings and the current Analysis Settings (max formant, number of formants, window length, f0 range, min RMS and min confidence). The audio is analyzed at the analysis sample rate (2 × max formant) in frames one analysis window long. `praat-parselmouth` must be installed.
 
-2. Click the **Benchmarking** button in the launcher
+### What is reported
 
-3. Select comparison method:
-   - `native`: Built-in formant/pitch extraction
-   - `custom`: Custom analysis backend (if implemented)
-   - Note: Parselmouth is automatically used as the reference standard
+- **Agreement**: correlation, RMSE, MAE and relative error (%) for F1, F2, F3 and f0.
+- **Timing**: mean ms per frame and the range of the central 95% of per-frame times (2.5th to 97.5th percentiles), for the selected method and for Parselmouth, separately for formants and pitch.
+- **Frame counts**: frames recorded, frames judged voiced, and frames used in each comparison.
 
-4. Click **Run** to start the benchmark
+Formants are compared on voiced frames only, with voicing decided by Parselmouth's pitch tracker (using the Analysis Settings f0 range and min RMS), so the formant frames are the same whichever pitch method is benchmarked. Pitch is compared on frames that both methods judge voiced.
 
-5. Speak continuously during the recording period
+### Output files
 
-6. Results are automatically saved to the `benchmarking/` folder
+Saved to `benchmarking/` in the project folder.
 
-### What It Measures
-- **Formant accuracy**: correlation, RMSE, MAE, and relative error (%) for F1, F2, F3
-- **Pitch accuracy**: correlation, RMSE, MAE, and relative error (%) for f0
-- **Timing**: mean ms/frame and 95% confidence intervals for both the selected method and Parselmouth (reported separately for formant and pitch)
-- **Frame counts**: number of voiced frames used in each comparison
+| File | Contents |
+|------|----------|
+| `comprehensive_benchmark.md` | The report: settings used, agreement tables, and timing |
+| `formant_raw_comparison.csv` | Per-frame formant values, with columns named after the method (e.g. `timestamp, lpc_F1, lpc_F2, lpc_F3, praat_F1, praat_F2, praat_F3`) |
+| `pitch_raw_comparison.csv` | Per-frame pitch values, with columns named after the method (e.g. `timestamp, autocorrelation_f0, praat_f0`) |
+| `benchmark_{timestamp}.wav` | The recorded audio, at the analysis sample rate |
 
-### Output Files
-- `benchmarking/formant_raw_comparison.csv`: Per-frame formant values (`timestamp, nF1, nF2, nF3, pF1, pF2, pF3`)
-- `benchmarking/pitch_raw_comparison.csv`: Per-frame pitch values (`timestamp, native_f0, praat_f0`)
-- `benchmarking/comprehensive_benchmark.md`: Full statistical report (accuracy tables, timing with 95% CIs)
-- `benchmarking/benchmark_{timestamp}.wav`: Recorded audio used for the benchmark
+### Reading the results
 
-**Duration:** ~15 seconds of recording
-**Reference Standard:** Parselmouth/Praat is used as the gold standard for comparison. However, it makes plenty of mistakes too, so check the audio!
+| Measure | Rough guide |
+|---------|-------------|
+| Correlation | 0.95–1.00 excellent, 0.90–0.95 good, 0.80–0.90 acceptable, below 0.80 poor (inspect the audio) |
+| RMSE, f0 | Below 10 Hz excellent, below 20 Hz good, below 50 Hz acceptable |
+| RMSE, F1 and F2 | Below 30 Hz excellent, below 50 Hz good, below 100 Hz acceptable |
+| Mean time per frame | Should be well under the time step: 16.67 ms at 60 fps |
 
-### Use This When:
-- Validating formant/pitch accuracy against Praat
-- Comparing native or custom methods against Parselmouth
-- Optimizing for real-time performance
-- Determining if analysis settings are appropriate for your use case
-- Publishing research requiring method validation
+## Performance monitor
 
-### Requirements & Guidelines
-* **Software**: `praat-parselmouth` must be installed (installed by default in the setup script).
-* **Hardware**: Working microphone and quiet environment.
-* **Recording Guidelines**:
-  1. Produce vowels continuously during the entire recording.
-  2. Use natural, varied speech.
-  3. Minimize background noise.
-  4. Avoid silences (reduces valid comparison frames).
+`Ctrl/Cmd+P` in any mode shows the actual rate of each stage of the pipeline next to its target.
 
-### Interpreting Results
+| Line | What it measures | Target | If it is low |
+|------|------------------|--------|--------------|
+| GUI FPS | How often the screen is redrawn | The mode's `fps` setting (60 by default) | Drawing is the bottleneck |
+| Audio In | Audio chunks read from the microphone and queued for analysis, per second | One chunk per display frame, so the `fps` setting (60.0 ch/s at 60 fps). In LiveSpectrogram a chunk is one time step, so 1000 / `time_step_ms` (166.7 ch/s for a 6 ms step) | The microphone or its driver is not delivering audio at the expected rate |
+| Analysis | Analysis windows completed and queued for plotting, per second | The same as Audio In, since each chunk triggers one analysis | The analysis takes longer than one chunk; the queue fills and chunks are dropped |
+| Queue | Chunks waiting to be analyzed | 0 to 5 | (If high) the analysis is falling behind; an early warning before chunks are dropped |
 
-#### Correlation Coefficients
-- **0.95–1.00**: Excellent agreement
-- **0.90–0.95**: Good agreement
-- **0.80–0.90**: Acceptable
-- **<0.80**: Poor agreement (investigate audio)
+Each rate is followed by its percentage of the target. The text is green at 90% of the target or more, yellow from 75% to 90%, and red below 75%. The Queue line is green for 0–5 chunks, yellow for 6–25, and red for 26 or more.
 
-#### Error Metrics
-- **RMSE (Root Mean Square Error)**: Measures average magnitude of errors in Hz. Lower is better.
-  - f0 thresholds: <10 Hz (excellent), <20 Hz (good), <50 Hz (acceptable)
-  - F1/F2 thresholds: <30 Hz (excellent), <50 Hz (good), <100 Hz (acceptable)
-- **Relative Error (%)**: Average absolute percentage difference from Parselmouth. Lower is better.
+**Dropped chunks.** The recording (WAV) is not affected, since it is written before the queue. Analysis windows are never joined across a dropped chunk: after a drop, no windows are analyzed until a full window of continuous audio has arrived again, so the CSV has no rows for that stretch. The same applies to the first window after recording starts.
 
-#### Timing Metrics
-- **Mean Latency (ms/frame)**: Time to process one analysis frame. Target is well under **16.67 ms** for 60 FPS real-time visualization. The native method is typically faster than Parselmouth.
-
----
-
-## Real-Time Performance Monitoring
-
-VocalTrack includes a real-time **Performance Monitor Overlay** that can be toggled on/off inside any visualizer (`LivePitch`, `LiveVowel`, `LiveSpectrum`, `LiveSpectrogram`) by pressing **`Ctrl+P`** (or `Cmd+P` on macOS).
-
-This overlay displays actual throughput rates alongside their expected/programmed targets to help diagnose UI render lag, microphone capture latency, and background DSP processor bottlenecks.
-
-### Metrics Explained
-
-The overlay displays five key metrics in a semi-transparent panel:
-
-1. **GUI FPS (Frames Per Second)**:
-   - **What it is**: The actual drawing and screen refresh rate of the Pygame graphics loop.
-   - **Calculation**: Derived using Pygame's internal `self.clock.get_fps()`.
-   - **Target**: Set in the configuration of each visualizer (default: 60 FPS).
-   - **Performance Diagnostic**: A drop in actual FPS indicates the main rendering thread is lagging (e.g., due to slow layout rendering, excessive coordinate calculations, or general system overhead).
-
-2. **Audio In (Audio Capture Rate)**:
-   - **What it is**: The rate at which raw audio chunks are successfully read from the microphone device and queued for analysis.
-   - **Calculation**: Counted thread-safely in PySide's audio input capture loop inside `AudioProcessor.py`. The count is evaluated and reset every 1.0 second.
-   - **Target**: Dynamically calculated as $1000 / \text{chunk\_ms}$ (e.g., **50.0 ch/s** for a 20ms chunk or **66.7 ch/s** for a 15ms chunk).
-   - **Performance Diagnostic**: A drop in this rate indicates the microphone driver or hardware is under-running or dropping samples, which impacts analysis continuity.
-
-3. **Analysis (DSP Window Rate)**:
-   - **What it is**: The rate of completed window analyses (pitch/formants) in the background worker thread.
-   - **Calculation**: Counted in the analysis thread of `AudioProcessor.py` every time a window of audio samples is processed into a `Sound` object and successfully queued for plotting.
-   - **Target**: Should match the expected Audio In capture rate (e.g., **50.0 win/s** for a 20ms chunk).
-   - **Performance Diagnostic**: If this rate falls behind, the DSP algorithms (native LPC/autocorrelation, or Parselmouth/Praat) are taking longer to compute than the chunk duration. This causes the input queues to overflow and drop frames.
-
-4. **Queue (Analysis Backlog)**:
-   - **What it is**: The number of raw audio chunks currently backlogged in the input queue waiting to be processed by the background analysis thread.
-   - **Calculation**: Derived using `.qsize()` on the `raw_samples_queue` in `AudioProcessor.py`.
-   - **Performance Diagnostic**: In a healthy state, this should be **0 to 5** chunks. If the queue size increases toward the maximum capacity (e.g., 50 chunks), the background analysis algorithms (LPC/autocorrelation, or Parselmouth/Praat) are taking longer to run than the audio chunk duration. This serves as an early warning of a DSP processing bottleneck before the queue overflows and starts dropping frames.
-
-5. **Throughput Percentages**:
-   - Each rate displays a percentage indicator in parentheses (e.g., `(99.67%)`), calculated as:
-     $$\text{Throughput Percentage} = \frac{\text{Actual Rate}}{\text{Target Rate}} \times 100\%$$
-
-### Visual Health Indicators (Color Coding)
-
-To make diagnostics quick and intuitive, the text colors of the overlay change dynamically based on target achievement:
-- **Green** ($\ge 90\%$ of target): Healthy operation. The pipeline is running smoothly with minimal latency.
-- **Yellow** ($75\%$ to $90\%$ of target): Warning. The system is dropping frames or chunks slightly (minor processing delays).
-- **Red** ($< 75\%$ of target): Critical bottleneck. The app is experiencing significant lag, buffer drops, or thread thrashes.
-- **Queue Count Warning**: The `Queue` line shows **Green** for 0–5 chunks, **Yellow** for 6–25 chunks, and **Red** for 26+ chunks (pileups backlogged in the analysis queue).
+What to do when a rate is low: [Troubleshooting](Troubleshooting#performance).

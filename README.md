@@ -2,188 +2,80 @@
 
 # VocalTrack
 
-Real-time speech visualization toolkit with four specialized modes for acoustic analysis. Features a user-friendly GUI launcher, configurable analysis parameters, and automated data export for research,  clinical, and pedagogical applications.
+VocalTrack is a Python application for real-time speech visualization. It has four display modes, a launcher for configuring the analysis, and automatic export of audio and measurements.
 
-For a detailed description of the **VocalTrack** architecture and signal processing pipeline, please refer to:
-
-* the [methods article](https://github.com/santiagobarreda/VocalTrack/releases/download/v1.0.0-beta/Barreda_2026_VocalTrack_underreview.pdf), currently under review.
-* check out the comprehensive documentation available in the [wiki](https://github.com/santiagobarreda/VocalTrack/wiki).
-* check out the [YouTube channel](https://www.youtube.com/playlist?list=PLcX__4_5WSTg).
+The architecture and signal processing pipeline are described in the [methods article](https://github.com/santiagobarreda/VocalTrack/releases/download/v1.0.0-beta/Barreda_2026_VocalTrack_underreview.pdf), currently under review. The documentation is in the [wiki](https://github.com/santiagobarreda/VocalTrack/wiki), and videos showing installation and usage are in a [YouTube playlist](https://www.youtube.com/playlist?list=PLcX__4_5WSTg).
 
 ## Features
 
-- **Four Visualization Modes**:
-  - **LiveVowel**: Real-time vowel space tracking (F1/F2 formant display)
-  - **LivePitch**: Fundamental frequency (f0) contour visualization
-  - **LiveSpectrogram**: Scrolling wideband spectrogram
-  - **LiveSpectrum**: Real-time FFT spectrum analyzer
-- **GUI Launcher**: PySide6 interface with comprehensive settings dialogs
-- **Advanced Smoothing**: 1-Euro filter for responsive yet stable tracking
-- **Flexible Analysis**: Native or Parselmouth backend for formant/pitch extraction
-- **Automated Export**: WAV audio + CSV data logs for vowel and pitch modes
-- **Benchmarking Tools**: Built-in accuracy and timing benchmarks
+- **Four display modes**:
+  - **LiveVowel**: F1/F2 vowel space
+  - **LivePitch**: fundamental frequency (f0) contour
+  - **LiveSpectrogram**: scrolling spectrogram
+  - **LiveSpectrum**: power spectrum, with an optional LPC envelope and formant markers
+- **Launcher**: PySide6 interface with settings dialogs; settings are saved between sessions
+- **Analysis methods**: built-in (LPC or WLP for formants, autocorrelation or YIN for pitch), Parselmouth (Praat), or your own
+- **Smoothing**: a stability gate followed by a 1-Euro filter
+- **Export**: WAV audio in all modes, plus CSV files of measurements in LiveVowel and LivePitch
+- **Benchmarking**: compares any method against Parselmouth (Praat) for agreement and timing
 
-## How It Works
+## How it works
 
-1. **Audio Capture**: `AudioProcessor` continuously reads microphone input in small chunks via QtMultimedia (`QAudioSource`)
-2. **Windowing**: Chunks are combined to form analysis windows (configurable duration)
-3. **Acoustic Analysis**: `Sound` objects compute formants, pitch, or spectra depending on mode
-4. **Smoothing**: Adaptive `Smoother` maintains a memory applies 1-Euro filtering for stable trajectories
-5. **Visualization**: Real-time Pygame rendering with configurable scales and ranges
-6. **Export**: Automatic WAV + CSV export on exit (LiveVowel and LivePitch modes)
+1. **Audio capture**: `AudioProcessor` reads microphone input through QtMultimedia (`QAudioSource`) in chunks, one chunk per display frame
+2. **Windowing**: each new chunk triggers one analysis of the most recent window of audio (of configurable length), so consecutive windows overlap
+3. **Analysis**: `Sound` objects compute formants, pitch, or spectra, depending on the mode
+4. **Smoothing**: the `Smoother` accepts only stable, voiced frames and applies a 1-Euro filter
+5. **Display**: the mode (`LiveVowel`, `LivePitch`, `LiveSpectrogram` or `LiveSpectrum`) draws the result with Pygame
+6. **Export**: files are written when recording is paused and on exit
 
-## Installation
+## Requirements
 
-### Requirements
+- Python 3.9 or newer (developed with Python 3.14)
+- A microphone. A head-mounted USB microphone is recommended; microphones built into laptop screens or webcams can give very poor results
+- Microphone permission granted by the operating system
 
-- Python >=3.9 and <3.15
-- Microphone/audio input device (head-mounted microphones are required for proper function)
-- OS audio permissions enabled
+## Quick start
 
-## Quick Start
+1. Clone the repository (or download it from GitHub and unzip it):
 
-1. Clone the repository:
 ```bash
 git clone https://github.com/santiagobarreda/VocalTrack.git
 cd VocalTrack
 ```
-Or download from GitHub and unzip into local directory. 
 
-2. Install dependencies (we highly recommend doing this inside a virtual environment):
+2. Install the dependencies. A virtual environment is recommended:
+
 ```bash
-# Optional but recommended: Create and activate a virtual environment
-# Windows: python -m venv vocaltrack-env && vocaltrack-env\Scripts\activate
+# Windows:     python -m venv vocaltrack-env && vocaltrack-env\Scripts\activate
 # macOS/Linux: python3 -m venv vocaltrack-env && source vocaltrack-env/bin/activate
 
-# (Note: If you skip creating a virtual environment on macOS/Linux, you will likely need to use pip3 instead of pip below)
-
-# Upgrade core packaging tools (python -m pip is required on Windows to prevent file-locking crashes)
+# python -m pip is required on Windows for this command, to avoid file-locking errors
 python -m pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 ```
 
-3. Launch the GUI:
+Without a virtual environment on macOS/Linux, use `pip3` instead of `pip`.
+
+3. Start the launcher:
 
 ```bash
 python vocaltrack.py
 ```
 
-### Settings Dialogs
+4. Select a microphone in **Data Settings**, then click a mode button. `Space` starts and pauses recording, and `Ctrl/Cmd+?` shows the keys for the mode. Files are saved to `recordings/`.
 
-Configure parameters before launching a mode:
+## Documentation
 
-- **Analysis Settings**: Window duration, formant/pitch bounds, analysis method
-- **Smoother Settings**: 1-Euro filter parameters, memory, stability thresholds
-- **Recording Settings**: Select audio input device, and whether to save audio
-- **Formant Plot Settings**: F1/F2 ranges, display mode, frequency scale
-- **Pitch Plot Settings**: f0 display range, plot mode (fixed/continuous)
-- **Spectrogram Settings**: Frequency range, colormap, dynamic range, padding
-- **Spectrum Settings**: FFT parameters, display range, smoothing
-
-### Launch a Mode
-
-Click one of the four launch buttons:
-
-1. **LiveVowel** (green): Vowel space tracking with F1/F2 display
-2. **LivePitch** (blue): Pitch contour visualization
-3. **LiveSpectrogram** (purple): Scrolling spectrogram
-4. **LiveSpectrum** (orange): Real-time spectrum analyzer
-
-### Keyboard Controls
-
-**Common (all modes where implemented):**
-- `ESC`: Quit and save (if applicable)
-- `Ctrl+G`: Toggle grid overlay
-- `Ctrl+?`: Toggle help overlay
-- `+`/`-`: Adjust threshold/gain/dynamic range
-
-**Note for macOS users:** all `Ctrl+...` shortcuts also support `Cmd+...`.
-
-**LiveVowel:**
-- `Ctrl+V`: Toggle IPA vowel picker
-- `Ctrl+R`: Toggle recording state
-- `Ctrl+?`: Toggle help overlay (stops recording when shown, starts when hidden)
-- `Ctrl+T`: Toggle vowel template display
-- `Ctrl+S`: Save currently toggled template labels + frequency positions
-- `Ctrl+L`: Toggle log/linear frequency scale
-- `Backspace`: Undo last track (in track mode)
-- `Delete`: Clear all tracks (in track mode)
-
-**LivePitch:**
-- `Space`: Push-to-talk recording (hold to record)
-- `Backspace`: Remove last track
-- `Delete`: Clear all tracks
-
-**LiveSpectrogram:**
-- `Ctrl +`/`Ctrl -`: Adjust gain
-
-### Startup Defaults
-
-- Recording starts OFF when launching each mode.
-- Help overlay starts ON for each visualization window.
-
-**LiveSpectrum:**
-- `+`/`-`: Adjust gain offset
-
-## Data Export
-
-Files are automatically saved to `recordings/` on exit (depending on options enabled in Recording Settings):
-
-**LiveVowel:**
-- `speaker_YYYY-MM-DD_HHMMSS_vowel_original.wav`: Original audio recording (device sample rate)
-- `speaker_YYYY-MM-DD_HHMMSS_vowel_downsampled.wav`: Downsampled audio recording (analysis sample rate)
-- `speaker_YYYY-MM-DD_HHMMSS_formants.csv`: Timestamped F1/F2/F3 data (voiced frames only)
-
-**LivePitch:**
-- `speaker_YYYY-MM-DD_HHMMSS_pitch_original.wav`: Original audio recording (device sample rate)
-- `speaker_YYYY-MM-DD_HHMMSS_pitch_downsampled.wav`: Downsampled audio recording (analysis sample rate)
-- `speaker_YYYY-MM-DD_HHMMSS_pitch.csv`: Timestamped f0 data (voiced frames only)
-
-**Note:** LiveSpectrogram and LiveSpectrum are visualization-only modes and do not export CSV files by default.
-
-## Architecture
-
-**Core Components:**
-- `AudioProcessor`: Background thread for real-time audio capture
-- `Sound`: Acoustic analysis engine (formants, pitch, spectrum)
-- `Smoother`: Adaptive 1-Euro filter for trajectory smoothing
-- `BaseAudioVisualizer`: Shared pygame rendering and event handling
-- `LiveVowel`, `LivePitch`, `LiveSpectrogram`, `LiveSpectrum`: Mode-specific visualizers
-
-**Configuration:**
-- `config.py`: Default parameters for all modes
-- `.VocalTrack_settings.json`: Persistent user settings (auto-saved)
-
-## Benchmarking
-
-Run accuracy and timing benchmarks from the launcher:
-
-1. Click **Benchmarking** button
-2. Select benchmark comparison (Parselmouth vs. 'native' or 'custom')
-3. Follow on-screen recording instructions
-4. Results saved to `benchmarking/` folder
-
-## Troubleshooting
-
-**No audio input:**
-- Open Recording Settings and verify input device
-- Check OS microphone permissions
-- Test: `python -c "from PySide6.QtMultimedia import QMediaDevices; print(len(QMediaDevices.audioInputs()))"`
-
-**Poor tracking quality:**
-- Adjust min/max f0 for your voice in Analysis Settings
-- Increase `min_rms_db` (less negative) to ignore background noise
-- Tune smoother parameters for your use case
-- Use a quieter environment and speak closer to microphone
-- Use a good microphone! Any USB headmounted microphone is probably good enough. Miscrophones on laptop screens or on webcams may result is very poor performance.
-
-**GUI launcher issues:**
-- Verify PySide6: `pip install PySide6>=6.5.0`
-- Check `.VocalTrack_settings.json` for corruption
-
-**Formant/pitch extraction errors:**
-- Switch between `native` and `parselmouth` methods in Analysis Settings
-- Install Parselmouth if needed: `pip install praat-parselmouth`
+| Page | Contents |
+|------|----------|
+| [Installation and Launch](https://github.com/santiagobarreda/VocalTrack/wiki/Installation-and-Launch) | Requirements, installation, microphone permissions, starting the launcher |
+| [Basic Usage](https://github.com/santiagobarreda/VocalTrack/wiki/Basic-Usage) | The steps of a session, from launch to saved files |
+| [Mode Guides](https://github.com/santiagobarreda/VocalTrack/wiki/Mode-Guides) | What each mode shows, its keyboard and mouse controls, and how it records |
+| [Settings Reference](https://github.com/santiagobarreda/VocalTrack/wiki/Settings-Reference) | Every setting with its default and effect, the settings file, and the analysis methods |
+| [Outputs and File Formats](https://github.com/santiagobarreda/VocalTrack/wiki/Outputs-and-File-Formats) | File names, WAV and CSV formats, and the vowel template format |
+| [Benchmarking and Performance](https://github.com/santiagobarreda/VocalTrack/wiki/Benchmarking-and-Performance) | Comparing analysis methods against Parselmouth, and the performance monitor |
+| [Troubleshooting](https://github.com/santiagobarreda/VocalTrack/wiki/Troubleshooting) | Problems and fixes, and known limitations |
+| [Formant Tracking Troubleshooting & Calibration](https://github.com/santiagobarreda/VocalTrack/wiki/Formant-Tracking-Troubleshooting) | Checking the formant settings for a speaker with the LPC overlay in LiveSpectrum |
 
 ## Citation
 

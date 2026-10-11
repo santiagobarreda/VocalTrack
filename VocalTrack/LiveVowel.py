@@ -1,9 +1,5 @@
 # Import logging for debug/error messages
 import logging
-# Import time for timestamp calculations
-import time
-# Import queue for thread-safe queue handling
-import queue
 # Import os for file/directory operations
 import os
 
@@ -14,13 +10,13 @@ import pygame
 
 # Import required modules using relative imports
 from .Smoother import Smoother
-from .BaseAudioVisualizer import BaseAudioVisualizer  # Base class for shared functionality
+from .BaseAudioVisualizer import BaseAudioVisualizer, fit_to_desktop  # Base class for shared functionality
 # Import required classes and modules
 from .Sound import Sound
 from .AudioProcessor import AudioProcessor
 from .EventHolder import EventHolder
 from .point import Point
-from . import ipalabels, voweltemplate
+from . import ipalabels
 from . import config, exporter
 
 # Create logger instance for this module
@@ -42,7 +38,8 @@ class LiveVowel(BaseAudioVisualizer):
                  audio_config=None,
                  analysis_config=None,
                  smoother_config=None,
-                 input_device_index=None):
+                 input_device_index=None,
+                 input_device_name=None):
         """
         Initialize LiveVowel application and all audio/GUI components.
 
@@ -52,7 +49,9 @@ class LiveVowel(BaseAudioVisualizer):
             analysis_config (dict, optional): Analysis settings. Uses default if None.
             smoother_config (dict, optional): Smoother settings. Uses default if None.
             input_device_index (int, optional): Audio input device index. Uses default if None.
+            input_device_name (str, optional): Audio input device name; takes priority over the index.
         """
+        self.input_device_name = input_device_name
         # Load configuration dictionaries (use defaults if not provided)
         self.gui_info = gui_config or config.LIVEVOWEL_CONFIG.copy()  # GUI display settings
         self.audio_config = audio_config or config.AUDIO_CONFIG.copy()  # Audio settings
@@ -68,6 +67,11 @@ class LiveVowel(BaseAudioVisualizer):
         self.analysis_config['pitch'] = True
         self.analysis_config['compute_spectrum'] = False
 
+        # One analysis per display frame: the audio chunk (the analysis time step) is one frame long
+        self.audio_config.setdefault('window_ms', config.AUDIO_CONFIG['window_ms'])
+        self.audio_config['chunk_ms'] = config.chunk_ms_for_fps(self.gui_info.get('fps', 60))
+        self.analysis_config['window_length'] = self.audio_config['window_ms'] / 1000.0
+        self.analysis_config['time_step'] = self.audio_config['chunk_ms'] / 1000.0
 
         # Prepare config dict for base class initialization
         base_config = {
@@ -78,6 +82,8 @@ class LiveVowel(BaseAudioVisualizer):
         
         
         # Call parent class __init__ (initializes pygame, screen, clock, UI toggles)
+        # Shrink the window (same aspect ratio) if it does not fit on this screen
+        self.gui_info['gui_size'] = fit_to_desktop(*self.gui_info['gui_size'])
         gui_size = self.gui_info['gui_size']
         super().__init__(
             app_title="Live Vowel",
@@ -90,16 +96,8 @@ class LiveVowel(BaseAudioVisualizer):
 
         # Create Sound object for formant analysis (will be reused for each frame)
         self.sound = Sound(**self.analysis_config)
-        # Create audio processor thread to capture microphone input in background
-        self.audio_processor = AudioProcessor(
-            chunk_ms=self.audio_config.get('chunk_ms'),
-            number_of_chunks=self.audio_config.get('number_of_chunks'),
-            analysis_config=self.analysis_config,
-            min_rms_db=self.audio_config.get('min_rms_db'),
-            input_device_index=input_device_index
-        )
         # Create smoother to filter noisy formant trajectories
-        self.smoother = Smoother(**self.smoother_config)
+        self.smoother = Smoother(**self.smoother_config, chunk_ms=self.audio_config.get('chunk_ms'))
 
         # Pygame sprite groups for rendering points on screen
         self.point = None  # Most recent point, None if no valid point exists
@@ -107,17 +105,36 @@ class LiveVowel(BaseAudioVisualizer):
         self.finished_tracks = []  # List of completed track Groups (turned blue, ordered)
         self.all_points = pygame.sprite.Group()  # All points ever created (for export)
 
-        # Data storage for export
-        self.data = []  # Will store formant data for saving
-
         # UI components for display
-        self.ipalabels = ipalabels.IPALabels(self.screen, gui_info=self.gui_info)  # IPA vowel labels overlaid on plot
-        self.voweltemplate = voweltemplate.VowelTemplate(self.screen, self.gui_info)  # Vowel chart template
+        data_dir = config.EXPORT_CONFIG.get('data_dir', '.')
+        template_file = self.gui_info.get('template_file')
+        if template_file in ('None', 'none', '', None):
+            template_file = None
+
+        template_path = None
+        if template_file:
+            if os.path.isabs(template_file) or os.path.exists(template_file):
+                template_path = template_file
+            elif data_dir and data_dir != '.':
+                cand = os.path.join(data_dir, 'templates', template_file)
+                if os.path.exists(cand):
+                    template_path = cand
+            else:
+                cand = ipalabels.get_external_path(os.path.join('templates', template_file))
+                if os.path.exists(cand):
+                    template_path = cand
+        elif self.gui_info.get('template_file') not in ('None', 'none'):
+            template_path = ipalabels.find_template_file()
+
+        self.ipalabels = ipalabels.IPALabels(self.screen, template_path=template_path, gui_info=self.gui_info)  # IPA vowel labels overlaid on plot
 
         # Application state: "idle" = IPA picker hidden, "menu" = IPA picker visible
         self.state = "idle"  # Start with IPA picker hidden
-        # Separate flag controlling audio capture (independent of picker visibility)
-        self.recording_active = False  # Start with recording off
+        # Flag controlling audio capture. Starts paused with the help overlay shown (like LivePitch);
+        # Space, or closing help with Ctrl/Cmd+?, starts recording. The AudioProcessor is created
+        # by _start_recording_session().
+        self.recording_active = False
+        self.audio_processor = None
         # Flag to toggle green template IPA symbols (from template) on/off (Ctrl+T)
         # When True, all template vowels are shown; when False, they are hidden (but can be toggled individually in menu)
         self.show_template = self.gui_info.get('show_vowel_template', False)
@@ -128,29 +145,20 @@ class LiveVowel(BaseAudioVisualizer):
         self.freq_scale = self.gui_info.get('freq_scale', 'log')
         # Track the current track number from smoother to detect when new tracks begin
         self.current_track_number = 0  # Matches smoother's initial track_number
-        # Track whether a valid point was created in the current frame
-        self.point_created_this_frame = False
 
         # Initialize default fonts to avoid recreating them on every frame (heavy OS lookup)
         self.font_20 = pygame.font.SysFont('Arial', 20)
         self.font_16 = pygame.font.SysFont(None, 16)
         self.font_32 = pygame.font.SysFont(None, 32)
-        self.font_24 = pygame.font.SysFont(None, 24)
-        # Track previous smoother.use state to detect when track becomes unstable
-        self.last_smoother_use = False
-        
-        # Recording session tracking for file export
-        self.session_name = exporter.create_session_name('speaker')
-        self.recording_start_time = None  # Will be set when first frame is captured
+        self.badge_font = self.font_16
+        # Recording session tracking for file export (named when a recording starts)
+        self.session_name = None
         self.original_audio_buffer = []  # Device-rate audio samples for WAV export
         self.downsampled_audio_buffer = []  # Analysis-rate audio samples for WAV export
         self.original_recording_sample_rate = self.audio_config.get('sample_rate', 10000)
         self.downsampled_recording_sample_rate = self.audio_config.get('sample_rate', 10000)
         self.formant_log = []  # Timestamped formant data for CSV export
         
-        # Min RMS display state (temporary indicator shown when adjusted)
-        self.min_rms_display_text = ""  # Text to display ("Min RMS: XX dB")
-        self.min_rms_display_until = 0  # Timestamp when display should disappear
         
          # Cache for grid rendering
         self.grid_surface = None
@@ -163,7 +171,7 @@ class LiveVowel(BaseAudioVisualizer):
         Run the main event loop for the LiveVowel GUI.
         Handles event polling, audio capture, GUI updates, and rendering.
         """
-        # Audio capture is off by default; user starts it explicitly with Ctrl+R.
+        # Audio capture is off by default; user starts it explicitly with Space.
         # Log start message to console/log file
         logger.info("LiveVowel started")
 
@@ -185,27 +193,31 @@ class LiveVowel(BaseAudioVisualizer):
                 # Process main GUI events (quit, resize, ctrl_v toggle)
                 # This handles application-level controls
                 self.main_events()
-                # Fill background: white when recording, grey when idle.
+                # Fill background (white)
                 self.fill()
                 
-                # Draw grid if enabled (toggle with 'g')
+                # Draw grid if enabled (toggle with Ctrl/Cmd+G)
                 if self.show_grid:
                     if self.grid_surface is None:
                         self.create_grid_surface()
                     self.screen.blit(self.grid_surface, (0, 0))
     
-                # Process audio and render formant points
-                # This is the core visualization - captures audio, analyzes formants, plots points
-                self.run_points(self.state, track_type=self.display_mode)
+                # Process queued sounds into formant points and tracks, then draw them
+                self.process_sounds()
+                self.draw_points(self.display_mode)
 
                 # Handle IPA label and template events and rendering
                 self.ipa_events()
 
+                # Inspection card (Shift+Click while paused or in the picker)
+                self.draw_inspect_overlay()
+
                 # Draw overlays after main content so they are visible.
                 self.draw_min_rms_display()
+                self.draw_notification()
                 if self.show_help:
                     self.draw_help_overlay()
-                self.draw_mode_status()
+                self.draw_status_indicators()
                 self.draw_performance_overlay()
                 
                 # Swap display buffers to show everything drawn this frame
@@ -215,6 +227,35 @@ class LiveVowel(BaseAudioVisualizer):
             # Always execute cleanup code, even if exception occurs
             # This ensures audio resources are properly released
             self.shutdown()
+
+    def inspect_lines(self, x, y):
+        """Inspection card: F1/F2 at the probe, and the values of the nearest plotted point."""
+        f1_val, f2_val = self.xy_to_formants(x, y)
+        lines = [
+            ("F1 (Height)", f"{int(round(f1_val))} Hz", (255, 120, 120)),
+            ("F2 (Backness)", f"{int(round(f2_val))} Hz", (100, 180, 255)),
+        ]
+
+        # Search for nearest recorded point within 25px
+        near_pt = None
+        min_dist = 25.0
+        all_sprites = list(self.all_points.sprites())
+        for tr in self.finished_tracks:
+            all_sprites.extend(tr.sprites())
+        all_sprites.extend(self.track.sprites())
+        for pt in all_sprites:
+            dist = ((pt.rect.centerx - x)**2 + (pt.rect.centery - y)**2)**0.5
+            if dist < min_dist:
+                min_dist = dist
+                near_pt = pt
+
+        if near_pt:
+            pt_f0 = getattr(near_pt, 'raw_f0', None)
+            if pt_f0 and pt_f0 > 10.0:
+                lines.append(("Recorded f0", f"{pt_f0:.1f} Hz", (120, 255, 140)))
+            if hasattr(near_pt, 'f1') and hasattr(near_pt, 'f2') and near_pt.f1 and near_pt.f2:
+                lines.append(("Track Formants", f"F1: {int(round(near_pt.f1))} / F2: {int(round(near_pt.f2))} Hz", (255, 230, 100)))
+        return lines
 
     def ipa_events(self):
         """
@@ -236,20 +277,16 @@ class LiveVowel(BaseAudioVisualizer):
                 self.ipalabels.textboxes[idx].visible = self.show_template
             template_status = "toggled on" if self.show_template else "toggled off"
             logger.debug(f"Template vowels {template_status}")
+            self.show_notification(
+                "Template vowels: ON" if self.show_template else "Template vowels: OFF",
+                duration_ms=1200,
+                bg_color=(220, 240, 255),
+                border_color=(0, 100, 200)
+            )
 
-        # Save the currently toggled green template labels + their positions.
+        # Save the currently toggled green template labels + their positions to a new timestamped template.
         if self.event_holder.ctrl_s:
-            success, output_path, saved_count = self.ipalabels.save_current_template()
-            if success:
-                logger.info(f"Saved IPA template ({saved_count} labels) to {output_path}")
-            else:
-                logger.error(f"Failed to save IPA template to {output_path}")
-
-        # Draw vowel template overlay if enabled in configuration
-        # This shows a reference vowel chart that can be scaled/positioned
-        if self.gui_info.get('show_vowel_template', False):
-            # Update template position/scale based on scroll events and render
-            self.voweltemplate.run_voweltemplate(self.event_holder, self.state)
+            self._save_template()
 
         # Scroll wheel scales all IPA labels in formant space
         if self.event_holder.left_scroll_up is not None:
@@ -264,102 +301,72 @@ class LiveVowel(BaseAudioVisualizer):
                 self.ipalabels.scale_formants(0.99)
                     
 
-    def run_points(self, state, track_type="single"):
-        """
-        Process audio, analyze formants, and render visualization points.
+    def _save_template(self):
+        """Ctrl/Cmd+S: save the shown green labels to a new timestamped template and make it active
+        (for this session and, through the settings file, for later launches)."""
+        success, output_path, saved_count = self.ipalabels.save_current_template()
+        if success:
+            logger.info(f"Saved IPA template ({saved_count} labels) to {output_path}")
+            new_fname = os.path.basename(output_path)
+            self.gui_info['template_file'] = new_fname
+            config.LIVEVOWEL_CONFIG['template_file'] = new_fname
 
-        This is the core method that captures audio each frame, performs formant
-        analysis, applies smoothing, and renders the results to the screen.
+            # Persist new template choice to settings manager so it remains active
+            try:
+                from VocalTrack import settings_manager
+                mgr = settings_manager.get_settings_manager()
+                mgr.set_nested('plotting', 'template_file', new_fname)
+                mgr.save()
+            except Exception as e:
+                logger.warning(f"Could not persist active template to settings: {e}")
 
-        Args:
-            state (str): Application state ('recording' or 'menu').
-            track_type (str, optional): Display mode.
-                - "single": Show only current point (default)
-                - "track": Show connected trajectory
-                - "all": Show all points permanently
+            self.show_notification(
+                f"Template saved & active: {new_fname} ({saved_count} vowels)",
+                duration_ms=2500,
+                bg_color=(200, 255, 200),
+                border_color=(0, 150, 0)
+            )
+        else:
+            logger.error(f"Failed to save IPA template to {output_path}")
+            self.show_notification(
+                "Failed to save template",
+                duration_ms=2000,
+                bg_color=(255, 200, 200),
+                border_color=(200, 0, 0)
+            )
+
+    def process_sounds(self):
         """
-        # Reset frame tracking flag at start of each frame
-        self.point_created_this_frame = False
-        
+        Process the analyzed sounds waiting in the queue (while recording): smooth the formants,
+        log stable frames for the CSV, create points, and manage tracks.
+
+        Visual Color Conventions:
+            - Red dots ((166, 33, 64)): Active live tracking of the current vocalization.
+            - Blue dots ((0, 100, 255)): Finalized tracks from previous vocalizations
+              (saved to `self.finished_tracks` when phonation ceases).
+        """
         # Only process audio when recording is explicitly active (independent of picker).
         if self.recording_active:
-            # Initialize recording timestamp on first frame
-            # This marks the start time for timestamped CSV export
-            if self.recording_start_time is None:
-                self.recording_start_time = time.time()
-            
-            # Drain the queue of all available analyzed sounds to keep processing in sync with capture
-            sounds_to_process = []
-            while True:
-                try:
-                    sound = self.audio_processor.analyzed_sounds_queue.get_nowait()
-                    if sound is not None:
-                        sounds_to_process.append(sound)
-                except queue.Empty:
-                    break
-                except AttributeError:
-                    break
-            
-            self.current_batch_size = len(sounds_to_process)
-            
+            # Take all available analyzed sounds to keep processing in sync with capture
+            sounds_to_process = self.take_analyzed_sounds()
+
             if sounds_to_process:
-                num_sounds = len(sounds_to_process)
-                device_chunk_size = getattr(self.audio_processor, 'device_chunk_size', 0)
-                
-                for idx, sound in enumerate(sounds_to_process):
+                for sound in sounds_to_process:
                     self.sound = sound
-                    
-                    # Calculate precise elapsed time from number of recorded samples for this specific chunk
-                    # Sample-based timing is more accurate than clock-based timing
-                    recorded_count = 0
-                    try:
-                        # Get total number of samples recorded so far
-                        recorded_count = self.audio_processor.get_recording_sample_count()
-                    except Exception:
-                        # If audio processor not ready, default to 0
-                        recorded_count = 0
-                    
-                    # Adjust recorded_count for backlog position
-                    backlog_offset = (num_sounds - 1 - idx) * device_chunk_size
-                    current_recorded_count = max(0, recorded_count - backlog_offset)
-                    
-                    # Calculate analysis window size in samples
-                    # Window is chunk_ms * number_of_chunks
-                    capture_rate = self.audio_processor.get_recording_sample_rate()
-                    window_ms = self.audio_config.get('chunk_ms', 5) * self.audio_config.get('number_of_chunks', 5)
-                    window_samples = int(round(
-                        capture_rate * (window_ms / 1000)
-                    ))
-                    # Calculate elapsed recording time, adjusted for window center
-                    # Subtract half window to align timestamp with center of analysis window
-                    elapsed_time = max(
-                        0.0,  # Never negative
-                        (current_recorded_count - (window_samples / 2)) / capture_rate
-                    )
-                    
+
+                    # Time of the analysis window center relative to the start of the recording (WAV),
+                    # stamped in the capture thread by AudioProcessor
+                    elapsed_time = sound.recording_time if sound.recording_time is not None else 0.0
+
                     # Apply smoothing filter to formant values
                     # This checks stability and applies temporal filtering
                     # Sets self.smoother.use to True if frame is stable and should be displayed
                     self.smoother.smooth_formants(self.sound)
 
-                    # Check if track just became unstable (ended)
-                    # This happens when smoother.use transitions from True to False
-                    if self.last_smoother_use and not self.smoother.use:
-                        # Track just ended - finish it immediately
-                        # Only save tracks with at least 5 points (filters spurious noise bursts)
-                        # look into making this a parameter?
-                        if len(self.track.sprites()) >= 5:
-                            # Turn all points blue to indicate track is finished
-                            for pt in self.track.sprites():
-                                pt.set_color((0, 100, 255))  # Blue color for finished tracks
-                            # Add current track to finished tracks list
-                            self.finished_tracks.append(self.track)
-                            logger.info(f"Track {self.current_track_number} marked as finished ({len(self.track.sprites())} points)")
-                        # Always create new empty track (even if previous was discarded)
-                        self.track = pygame.sprite.Group()
-                    
-                    # Update state for next frame
-                    self.last_smoother_use = self.smoother.use
+                    # Finish the visual track when the smoother ends the track (skip tolerance exceeded),
+                    # so on-screen tracks match the track_number written to the CSV
+                    if self.smoother.track_ended and len(self.track.sprites()) > 0:
+                        self._finish_current_track()
 
                     # Only create/log points for stable, smoothed formant values
                     # smoother.use is True when formants pass stability criteria
@@ -386,20 +393,24 @@ class LiveVowel(BaseAudioVisualizer):
                             self.smoother.plot_f2  # Smoothed F2 frequency
                         )
                         # Create a new Point sprite at calculated screen position
-                        # Sprite contains the Sound object and visual representation (red circle)
+                        # The sprite is the visual representation (red circle). It keeps the raw f0 and
+                        # where the frame is in the saved recording, not the audio itself
                         self.point = Point(
-                            self.sound, 
-                            plot_x, 
-                            plot_y, 
-                            f1=self.smoother.plot_f1, 
-                            f2=self.smoother.plot_f2
+                            plot_x,
+                            plot_y,
+                            f1=self.smoother.plot_f1,
+                            f2=self.smoother.plot_f2,
+                            raw_f0=self.sound.f0,
+                            recording_time=self.sound.recording_time,
+                            recording_name=self.session_name
                         )
-                        self.point_created_this_frame = True
                         
                         # Check if a new track has started (track number incremented by smoother)
                         # This happens when transitioning from unstable to stable
                         if self.smoother.track_number != self.current_track_number:
-                            # Update our stored track number (track was already finished above when it became unstable)
+                            # Normally already finished when the smoother ended it; this is a safety net
+                            if len(self.track.sprites()) > 0:
+                                self._finish_current_track()
                             self.current_track_number = self.smoother.track_number
                             logger.info(f"New track {self.current_track_number} started")
                         
@@ -407,8 +418,23 @@ class LiveVowel(BaseAudioVisualizer):
                         self.track.add(self.point)
                         # Add point to all_points group (permanent collection for export)
                         # Track persists until a new stable track begins (when track_number changes)
-                        self.all_points.add(self.point)       
+                        self.all_points.add(self.point)
 
+            # The audio device dropped out: the recording ended there (frames analyzed before the
+            # dropout were processed above), so save it and pause
+            if self.check_recording_interrupted() is not None:
+                self._stop_recording_session()
+
+    def draw_points(self, track_type="single"):
+        """
+        Draw the formant points (in recording and picker modes, so tracks stay visible).
+
+        Args:
+            track_type (str, optional): Display mode.
+                - "single": Show only the active instantaneous point (red).
+                - "track": Show active vocalization (red) plus finalized historical tracks (blue).
+                - "all": Show all recorded points permanently.
+        """
         # Render points based on track_type parameter
         # This happens in both recording and menu modes so tracks remain visible
         if track_type == "single":
@@ -424,10 +450,10 @@ class LiveVowel(BaseAudioVisualizer):
                 for finished_track in self.finished_tracks:
                     if len(finished_track.sprites()) > 0:
                         finished_track.draw(self.screen)
-            # Then draw current track (red) on top, ONLY if it's stable and smoother indicates good points
-            # Require minimum 5 points to prevent flickering from single unstable points
-            # This matches the threshold used for saving blue tracks
-            if len(self.track.sprites()) >= 5 and self.smoother.use:
+            # Then draw current track (red) on top. It stays visible through brief glitches within
+            # the smoother's skip tolerance, and is turned blue when the smoother ends the track.
+            # Require minimum 5 points, matching the threshold used for saving blue tracks
+            if len(self.track.sprites()) >= 5:
                 self.track.draw(self.screen)
         elif track_type == "all":
             # Draw all points ever created (permanent dot visualization)
@@ -465,16 +491,12 @@ class LiveVowel(BaseAudioVisualizer):
             logger.info(f"Frequency scale toggled to {scale_status}")
             
             # Recalculate coordinates for all existing points
-            for pt in self.all_points:
-                if getattr(pt, 'f1', None) is not None and getattr(pt, 'f2', None) is not None:
-                    new_x, new_y = self.point_coordinates(self.gui_info, pt.f1, pt.f2)
-                    pt.rect.center = (new_x, new_y)
-            
+            self._reposition_points()
+
             # Recalculate coordinates for all IPA labels
             for textbox in self.ipalabels.textboxes:
                 if textbox.f1 is not None and textbox.f2 is not None:
-                    new_x, new_y = self.ipalabels._hz_to_pixels(textbox.f1, textbox.f2)
-                    textbox.rect.center = (new_x, new_y)
+                    textbox.rect.center = self.ipalabels._hz_to_pixels(textbox.f1, textbox.f2)
             # Recreate cached grid surface on scale toggle
             self.grid_surface = None
         # Handles +/- keys to adjust minimum RMS threshold
@@ -495,6 +517,8 @@ class LiveVowel(BaseAudioVisualizer):
                                          new_size[0], new_size[1])
             # Update configuration with new window size
             self.gui_info['gui_size'] = new_size
+            # Move existing points so they stay at their F1/F2 positions
+            self._reposition_points()
             # Recreate cached grid surface on resize
             self.grid_surface = None
 
@@ -507,83 +531,109 @@ class LiveVowel(BaseAudioVisualizer):
                     self._stop_recording_session()
                 self.state = "menu"
             else:
-                # Closing picker: just hide it; recording state is unchanged
+                # Closing picker: resume recording
                 self.state = "idle"
+                if not self.recording_active:
+                    self._start_recording_session()
 
-        # Ctrl+R toggles recording on/off, fully independent of the picker.
-        if getattr(self.event_holder, 'ctrl_r', None) is not None:
-            if not self.recording_active:
-                self._start_recording_session()
-            else:
-                self._stop_recording_session()
+        # Space (when not in the vowel picker) toggles recording on/off
+        self.handle_space_toggle(self.event_holder)
+
+        # Shift + click inspection probe (only when recording is paused or in the picker)
+        self.update_inspect_probe(self.event_holder)
+
+    def toggle_recording(self):
+        """Space: start a new recording session, or stop (and save) the current one. Ignored while
+        the vowel picker is open."""
+        if self.state == "menu":
+            return
+        if not self.recording_active:
+            self.inspect_pos = None
+            self._start_recording_session()
+        else:
+            self._stop_recording_session()
+
+    def is_frozen(self):
+        """The display can be probed (Shift + click) while recording is paused or the picker is open."""
+        return not self.recording_active or self.state == "menu"
 
     def _handle_backspace(self):
-        """Handle backspace key press - remove most recently finished track."""
-        # Remove the most recently finished track
+        """Backspace: remove the most recently finished track (from the "track" and "all" displays)."""
         if len(self.finished_tracks) > 0:
             removed_track = self.finished_tracks.pop()
+            self.all_points.remove(*removed_track.sprites())
             logger.info(f"Removed last track (had {len(removed_track.sprites())} points)")
 
     def _handle_delete(self):
-        """Handle delete key press - clear all finished tracks."""
-        # Clear all finished tracks
+        """Delete: clear all finished tracks, and every point except the active track's (the "all" display)."""
         self.finished_tracks = []
+        active = set(self.track.sprites())
+        self.all_points.remove(*[pt for pt in self.all_points.sprites() if pt not in active])
         logger.info("Cleared all tracks")
+
+    def _reposition_points(self):
+        """Recompute screen positions of all plotted points from their F1/F2 (after resize or scale change)."""
+        for pt in self.all_points:
+            if getattr(pt, 'f1', None) is not None and getattr(pt, 'f2', None) is not None:
+                pt.rect.center = self.point_coordinates(self.gui_info, pt.f1, pt.f2)
+
+    def _finish_current_track(self):
+        """Turn the active track blue, keep it if it has at least 5 points, then start a new empty track."""
+        # Its points are no longer active, so they turn blue (as seen in the "all" display)
+        for pt in self.track.sprites():
+            pt.set_color((0, 100, 255))  # Blue color for finished tracks
+        # Only save tracks with at least 5 points (filters spurious noise bursts)
+        if len(self.track.sprites()) >= 5:
+            self.finished_tracks.append(self.track)
+            logger.info(f"Track {self.current_track_number} marked as finished ({len(self.track.sprites())} points)")
+        self.track = pygame.sprite.Group()
 
     def _start_recording_session(self):
         """Create a fresh audio processor, start capture, and mark recording active."""
         self.audio_processor = AudioProcessor(
             chunk_ms=self.audio_config.get('chunk_ms'),
-            number_of_chunks=self.audio_config.get('number_of_chunks'),
+            window_ms=self.audio_config.get('window_ms'),
             analysis_config=self.analysis_config,
             min_rms_db=self.analysis_config.get('min_rms_db'),
-            input_device_index=self.input_device_index
+            input_device_index=self.input_device_index,
+            input_device_name=self.input_device_name
         )
         self.audio_processor.start()
         self.audio_processor.start_recording(
-            record_original=(
-                config.EXPORT_CONFIG.get('save_recordings', False)
-                and config.EXPORT_CONFIG.get('save_original_audio', True)
-            ),
-            record_downsampled=(
-                config.EXPORT_CONFIG.get('save_recordings', False)
-                and config.EXPORT_CONFIG.get('save_downsampled_audio', False)
-            )
+            record_original=bool(config.EXPORT_CONFIG.get('save_original_audio', True)),
+            record_downsampled=bool(config.EXPORT_CONFIG.get('save_downsampled_audio', False))
         )
         self.original_recording_sample_rate = self.audio_processor.get_original_recording_sample_rate()
         self.downsampled_recording_sample_rate = self.audio_processor.get_downsampled_recording_sample_rate()
-        self.session_name = exporter.create_session_name('speaker')
-        self.recording_start_time = None
+        self.session_name = self.new_recording_name()
         self.original_audio_buffer = []
         self.downsampled_audio_buffer = []
         self.formant_log = []
         self.recording_active = True
+        self.alert_text = None
         logger.info("Recording session started")
+        self.notify_recording(True)
 
     def _stop_recording_session(self):
         """Stop audio capture, finalise active track, export data, mark recording inactive."""
         if not self.recording_active:
             return
-        # Finalise any active track (>=5 points threshold matches live track saving)
-        if len(self.track.sprites()) >= 5:
-            for pt in self.track.sprites():
-                pt.set_color((0, 100, 255))
-            self.finished_tracks.append(self.track)
-            self.track = pygame.sprite.Group()
-        # Stop the audio processor
+        # Finalise any active track
+        self._finish_current_track()
+        # Stop the audio processor and collect what it recorded
+        self._collect_recording()
         if self.audio_processor is not None:
-            self.audio_processor.stop_recording()
-            self.original_recording_sample_rate = self.audio_processor.get_original_recording_sample_rate()
-            self.downsampled_recording_sample_rate = self.audio_processor.get_downsampled_recording_sample_rate()
-            self.original_audio_buffer = self.audio_processor.get_original_recording().tolist()
-            self.downsampled_audio_buffer = self.audio_processor.get_downsampled_recording().tolist()
             self.audio_processor.stop()
         self.recording_active = False
-        # Export if data was captured
+        # Export if data was captured, then clear the buffers so closing the window doesn't save them again
         if self.original_audio_buffer or self.downsampled_audio_buffer or self.formant_log:
             logger.info(f"Exporting session: {self.session_name}")
             self.save(file_type='all')
+        self.original_audio_buffer = []
+        self.downsampled_audio_buffer = []
+        self.formant_log = []
         logger.info("Recording session stopped")
+        self.notify_recording(False)
 
     def point_coordinates(self, gui_info, plot_f1, plot_f2):
         """Convert formant frequencies to screen coordinates using configured scale (log or linear).
@@ -645,68 +695,40 @@ class LiveVowel(BaseAudioVisualizer):
         # Return pixel coordinates as tuple
         return plot_x, plot_y
 
-    def summarize(self):
-        """Compile recorded data into summary arrays for analysis/export.
+    def xy_to_formants(self, x, y):
+        """Convert screen pixel coordinates (x, y) to F1 and F2 formant frequencies (Hz)."""
+        gui_width, gui_height = self.gui_info['gui_size']
+        f1_min, f1_max = self.gui_info['f1_range']
+        f2_min, f2_max = self.gui_info['f2_range']
         
-        Legacy method that packages sprite data into numpy arrays.
-        Currently not used by save() method which has moved to timestamped CSV format.
-        """
-        # Get list of all Point sprites created during session
-        points = self.all_points.sprites()
-        # Package data into list of arrays:
-        self.data = [
-            # Array of f0 values from each point's Sound object
-            numpy.array([sprite.sound.f0 for sprite in points]),
-            # Array of track numbers (trajectory IDs from smoother)
-            numpy.array(self.smoother.track),
-            # Array of raw audio samples from each point's Sound object
-            numpy.array([sprite.sound.samples for sprite in points]),
-        ]
+        x_prop = max(0.0, min(1.0, 1.0 - (float(x) / max(1.0, float(gui_width)))))
+        y_prop = max(0.0, min(1.0, float(y) / max(1.0, float(gui_height))))
+        
+        if self.freq_scale == 'log':
+            log_f1_min = numpy.log(max(f1_min, 1.0))
+            log_f1_max = numpy.log(f1_max)
+            log_f2_min = numpy.log(max(f2_min, 1.0))
+            log_f2_max = numpy.log(f2_max)
+            f1 = float(numpy.exp(log_f1_min + y_prop * (log_f1_max - log_f1_min)))
+            f2 = float(numpy.exp(log_f2_min + x_prop * (log_f2_max - log_f2_min)))
+        else:
+            f1 = float(f1_min + y_prop * (f1_max - f1_min))
+            f2 = float(f2_min + x_prop * (f2_max - f2_min))
+        return f1, f2
 
     def save(self, file_type="all"):
         """Save recorded data to disk in multiple formats.
         
         Exports audio and formant data to recordings/ directory with timestamped filenames.
-        File types controlled by config.EXPORT_CONFIG settings.
+        File types controlled by config.EXPORT_CONFIG settings independently.
         
         Args:
             file_type (str): Export mode. Currently only 'all' is used.
         """
-        # Check if user wants all export formats (currently the only option)
         if file_type == 'all':
-            # Check if saving recordings is enabled
-            if not config.EXPORT_CONFIG.get('save_recordings', False):  # Check if saving is enabled (default: False)
-                logger.info("Recording save is disabled - skipping export")  # Log that save is disabled
-                return  # Exit without saving
-            
-            # Get export directory from configuration (default 'recordings')
-            output_dir = config.EXPORT_CONFIG.get('output_dir', 'recordings')
-            # Build base filename path: recordings/speaker_YYYY-MM-DD_HHMMSS
-            base_path = os.path.join(output_dir, self.session_name)
-            
-            if config.EXPORT_CONFIG.get('save_wav', True):
-                if not self.original_audio_buffer and self.audio_processor is not None:
-                    self.original_audio_buffer = self.audio_processor.get_original_recording().tolist()
-                if not self.downsampled_audio_buffer and self.audio_processor is not None:
-                    self.downsampled_audio_buffer = self.audio_processor.get_downsampled_recording().tolist()
-
-                if config.EXPORT_CONFIG.get('save_original_audio', True) and self.original_audio_buffer:
-                    wav_file = f"{base_path}_vowel_original.wav"
-                    exporter.save_wav(
-                        wav_file,
-                        numpy.array(self.original_audio_buffer),
-                        self.original_recording_sample_rate
-                    )
-                    logger.info(f"Original audio saved to {wav_file}")
-
-                if config.EXPORT_CONFIG.get('save_downsampled_audio', False) and self.downsampled_audio_buffer:
-                    wav_file = f"{base_path}_vowel_downsampled.wav"
-                    exporter.save_wav(
-                        wav_file,
-                        numpy.array(self.downsampled_audio_buffer),
-                        self.downsampled_recording_sample_rate
-                    )
-                    logger.info(f"Downsampled audio saved to {wav_file}")
+            # Audio files: <data_dir>/recordings/speaker_YYYY-MM-DD_HHMMSS_vowel_original.wav etc.
+            self.save_audio_files('vowel')
+            base_path = self.output_base_path()
 
             # Export timestamped CSV formant file if enabled and log has data
             if config.EXPORT_CONFIG.get('save_csv', True) and self.formant_log:
@@ -714,80 +736,16 @@ class LiveVowel(BaseAudioVisualizer):
                 exporter.save_formants_csv(csv_file, self.formant_log)
                 logger.info(f"Formants saved to {csv_file}")
 
-    def draw_mode_status(self):
-        """Draw top-left mode status to make recording state explicit."""
-        if self.recording_active:
-            return  # Skip status overlay when recording (screen color indicates state)
-            
-        font = self.font_20
-        rec_str = "idle"
-        pick_str = " | picker ON" if self.state == "menu" else ""
-        mode_text = f"Mode: {rec_str}{pick_str}"
-        text_surface = font.render(mode_text, True, (255, 255, 255))
-        text_rect = text_surface.get_rect(topleft=(10, 10))
-        bg_rect = text_rect.inflate(10, 6)
-        pygame.draw.rect(self.screen, (0, 0, 0), bg_rect)
-        pygame.draw.rect(self.screen, (100, 100, 100), bg_rect, 1)
-        self.screen.blit(text_surface, text_rect)
+    def status_badges(self):
+        """[REC] while recording, [PAUSED] otherwise, and [PICKER] while the vowel picker is open."""
+        badges = [("[REC]", (255, 80, 80))] if self.recording_active else [("[PAUSED]", (255, 210, 80))]
+        if self.state == "menu":
+            badges.append(("[PICKER]", (120, 180, 255)))
+        return badges
 
     def fill(self):
-        """Fill screen background: white when recording, light grey when idle."""
-        if self.recording_active:
-            self.screen.fill(config.COLORS['white'])
-        else:
-            self.screen.fill((200, 200, 200))
-
-    def adjust_min_rms(self, delta_db):
-        """Adjust the minimum RMS threshold and update display.
-        
-        Args:
-            delta_db (float): Change in dB (positive to increase, negative to decrease).
-        """
-        if not self.recording_active or not hasattr(self, 'audio_processor') or self.audio_processor is None:
-            return  # Only adjust when recording
-        
-        # Get current value from analysis_config (default to -60 if not set)
-        current_rms = self.analysis_config.get('min_rms_db', -60.0)
-        # Calculate new value, clamped to reasonable range [-90, -10]
-        new_rms = max(-90.0, min(-10.0, current_rms + delta_db))
-        
-        # Update config and audio processor
-        self.analysis_config['min_rms_db'] = new_rms
-        if hasattr(self.audio_processor, 'analysis_config'):
-            self.audio_processor.analysis_config['min_rms_db'] = new_rms
-        
-        # Set display text and timestamp
-        self.min_rms_display_text = f"Min RMS: {new_rms:.0f} dB"
-        self.min_rms_display_until = pygame.time.get_ticks() + 1000  # Show for 1 second (milliseconds)
-        
-        # Log adjustment at debug level to avoid spam from frequent key presses
-        logger.debug(f"Min RMS adjusted to {new_rms:.0f} dB")
-
-    def draw_min_rms_display(self):
-        """Draw minimum RMS threshold display when recently adjusted.
-        
-        Shows a temporary indicator in the top-left corner when the user adjusts
-        the min RMS threshold with +/- keys. Display disappears after 1 second.
-        Styling matches other temporary indicators like dynamic range/gain displays.
-        """
-        # Check if display time window is still active
-        # min_rms_display_until is set to pygame.time.get_ticks() + 1000 when adjusted
-        if hasattr(self, 'min_rms_display_until') and pygame.time.get_ticks() < self.min_rms_display_until:
-            # Use cached font
-            font = self.font_20
-            # Render text: white foreground, using stored display text from adjust_min_rms()
-            display_text = font.render(self.min_rms_display_text, True, (255, 255, 255))
-            # Get text rect and create slightly larger background rect
-            # topleft at (10, 10) positions display in top-left corner
-            text_rect = display_text.get_rect(topleft=(10, 10))
-            # Inflate rect by 10 pixels horizontally, 6 pixels vertically for padding
-            bg_rect = text_rect.inflate(10, 6)
-            # Draw black background for text
-            pygame.draw.rect(self.screen, (0, 0, 0), bg_rect)
-            # Draw gray border around background
-            pygame.draw.rect(self.screen, (100, 100, 100), bg_rect, 1)
-            # Blit text onto background
-            self.screen.blit(display_text, (10, 10))
+        """Fill screen background with white."""
+        self.screen.fill(config.COLORS['white'])
 
     def create_grid_surface(self):
         """Create a cached background surface containing the grid lines and F1/F2 labels."""
@@ -832,75 +790,31 @@ class LiveVowel(BaseAudioVisualizer):
         # Convert surface to match screen pixel format for optimized CPU blitting
         self.grid_surface = self.grid_surface.convert_alpha()
 
-    def draw_grid(self):
-        """Draw F1/F2 grid lines. Kept for backward compatibility."""
-        if self.show_grid:
-            if self.grid_surface is None:
-                self.create_grid_surface()
-            self.screen.blit(self.grid_surface, (0, 0))
-
     def draw_help_overlay(self):
-        """Draw help overlay showing available controls."""
-        # Semi-transparent overlay
-        overlay_color = (30, 30, 30)
-        overlay_alpha = 200
-        overlay_surface = pygame.Surface(self.gui_info['gui_size'])
-        overlay_surface.set_alpha(overlay_alpha)
-        overlay_surface.fill(overlay_color)
-        self.screen.blit(overlay_surface, (0, 0))
-        
-        # Use cached fonts
-        font_big = self.font_32
-        font_normal = self.font_24
-        text_color = (255, 255, 255)
-        
-        help_text = [
-            "=== LiveVowel Controls ===",
-            "",
-            "Ctrl/Cmd+R - Start / stop recording",
-            "Ctrl/Cmd+V - Show / hide IPA vowel picker",
-            "             (opening picker stops recording)",
-            "Ctrl/Cmd+T - Toggle template vowels on/off",
-            "Ctrl/Cmd+S - Save current template labels/positions",
-            "+/-    - Adjust minimum RMS threshold",
-            "Backspace - Undo last track",
-            "Delete - Clear all tracks",
-            "Ctrl/Cmd+G - Toggle grid",
-            "Ctrl/Cmd+P - Toggle performance overlay",
-            "Ctrl/Cmd+L - Toggle log/linear frequency scale",
-            "Scroll - Scale IPA labels (in vowel picker mode)",
-            "Ctrl/Cmd+? - Toggle this help overlay",
+        """Draw help overlay showing available controls and visual color conventions."""
+        legend_items = [
+            ("Active Vocalization (Current):", (255, 100, 100), "Red dots = real-time formant tracking of ongoing speech"),
+            ("Finalized Tracks (Previous):", (100, 180, 255), "Blue dots = completed tracks preserved from prior vocalizations"),
+            ("IPA Reference Markers:", (120, 240, 120), "Green labels = reference targets from active JSON template")
         ]
-        
-        # Draw title
-        title = font_big.render(help_text[0], True, text_color)
-        title_rect = title.get_rect(center=(self.gui_info['gui_size'][0] // 2, 50))
-        self.screen.blit(title, title_rect)
-        
-        # Draw help lines
-        y_pos = 120
-        for line in help_text[2:]:
-            if line:
-                text_surf = font_normal.render(line, True, text_color)
-                text_rect = text_surf.get_rect(left=100, top=y_pos)
-                self.screen.blit(text_surf, text_rect)
-            y_pos += 40
-        
-        # Footer text
-        footer = font_normal.render("Press Ctrl+? to close help", True, (200, 200, 200))
-        footer_rect = footer.get_rect(center=(self.gui_info['gui_size'][0] // 2, self.gui_info['gui_size'][1] - 30))
-        self.screen.blit(footer, footer_rect)
-
-    def quit(self):
-        """Signal the main loop to exit gracefully.
-        
-        Sets keep_running flag to False, which will cause the while loop
-        in run() to terminate on its next iteration.
-        """
-        # Log quit request to console/log file
-        logger.info("Quit requested")
-        # Set flag that controls main loop - False will exit on next iteration
-        self.keep_running = False
+        help_controls = [
+            "Space             - Start / pause real-time recording",
+            "Shift + Left click - Probe Formants (F1, F2) & Pitch (f0) (while paused)",
+            "Ctrl/Cmd+V        - Open / close IPA vowel symbol picker (click symbols to show / hide)",
+            "Ctrl/Cmd+T        - Toggle reference vowel template overlay",
+            "Left click + drag - Move an IPA / template vowel label",
+            "Mouse wheel       - Scale all IPA / template labels up or down (~1% per step)",
+            "Ctrl/Cmd+S        - Save labels to new timestamped template & activate",
+            "+ / -             - Adjust minimum RMS speech threshold",
+            "Backspace         - Undo last finalized track (track / all modes)",
+            "Delete            - Clear all finalized tracks (track / all modes)",
+            "Ctrl/Cmd+G / +L   - Toggle grid overlay / Log-linear frequency scale",
+            "Ctrl/Cmd+P        - Toggle performance monitor overlay",
+            "ESC               - Exit application and export session data",
+        ]
+        self.draw_help_panel("LiveVowel Controls & Color Guide", legend_items, help_controls,
+                             font_big=self.font_32, font_normal=self.font_20, font_bold=self.font_20,
+                             size=self.gui_info['gui_size'])
 
     def shutdown(self):
         """Clean up resources and export data on application exit.
@@ -909,27 +823,12 @@ class LiveVowel(BaseAudioVisualizer):
         cleanup even if an exception occurs. Stops audio processing, exports
         recordings, and closes Pygame.
         """
-        # Turn any active track blue to indicate recording has ended
-        if len(self.track.sprites()) > 0:  # Only save non-empty tracks
-            finished_track = pygame.sprite.Group()  # Create new group for this finished track
-            for pt in self.track.sprites():
-                pt.set_color((0, 100, 255))  # Blue color for finished tracks
-                finished_track.add(pt)  # Add to this finished track group
-            # Append to list of finished tracks
-            self.finished_tracks.append(finished_track)
-        
         # Wrap entire cleanup in try/except to prevent shutdown errors from propagating
         try:
             # Stop any active recording and retrieve remaining audio
             try:
-                if self.recording_active and self.audio_processor is not None:
-                    self.audio_processor.stop_recording()
-                    self.original_recording_sample_rate = self.audio_processor.get_original_recording_sample_rate()
-                    self.downsampled_recording_sample_rate = self.audio_processor.get_downsampled_recording_sample_rate()
-                    if not self.original_audio_buffer:
-                        self.original_audio_buffer = self.audio_processor.get_original_recording().tolist()
-                    if not self.downsampled_audio_buffer:
-                        self.downsampled_audio_buffer = self.audio_processor.get_downsampled_recording().tolist()
+                if self.recording_active:
+                    self._collect_recording()
             except Exception:
                 pass
             # Stop the processor thread regardless of recording state
@@ -966,9 +865,3 @@ class LiveVowel(BaseAudioVisualizer):
             logger.info("LiveVowel shutdown complete")
         except Exception as e:
             logger.error(f"Error during shutdown: {e}")
-        finally:
-            self.recording_start_time = None
-            self.original_audio_buffer = []
-            self.downsampled_audio_buffer = []
-            self.formant_log = []
-            self.session_name = exporter.create_session_name('speaker')

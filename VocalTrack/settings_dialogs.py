@@ -6,14 +6,18 @@ types in their preferences (like numbers and dropdown choices).
 # Bring in the visual building blocks from the PySide6 toolkit
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QHBoxLayout, 
-    QPushButton, QLineEdit, QComboBox, QLabel, QCheckBox
+    QPushButton, QLineEdit, QComboBox, QLabel, QCheckBox, QFileDialog, QMessageBox
 )
-from PySide6.QtGui import QIntValidator, QDoubleValidator
+from PySide6.QtGui import QIntValidator, QDoubleValidator, QValidator
+from PySide6.QtCore import QLocale
+import os
+import json
 
 # Helper functions for safe type conversion
 def safe_int(text, default=0):
+    # Accept text like "-30.0" (float settings shown in an integer field)
     try:
-        return int(text)
+        return int(round(float(text)))
     except ValueError:
         return default
 
@@ -29,6 +33,67 @@ from VocalTrack import config
 from VocalTrack import settings_manager
 # Bring in the tool that asks the computer what microphones are plugged in
 from VocalTrack import audio_devices
+
+def get_available_templates():
+    """List available JSON template files.
+
+    When a subject/data directory is active (data_dir != '.'), ONLY templates
+    from that subject's templates/ folder are listed. If none exist, 'None' is
+    displayed and the software does NOT look in the main templates directory.
+    Main app templates are only searched when in default project mode.
+    """
+    result = []
+
+    # 1. Check active Subject/Data folder templates if configured
+    data_dir = config.EXPORT_CONFIG.get('data_dir', '.')
+    if data_dir and data_dir != '.':
+        proj_tmpl_dir = os.path.join(data_dir, "templates")
+        if os.path.isdir(proj_tmpl_dir):
+            for fname in sorted(os.listdir(proj_tmpl_dir)):
+                if fname.endswith(".json"):
+                    fpath = os.path.join(proj_tmpl_dir, fname)
+                    display_name = f"[Subject] {fname}"
+                    try:
+                        with open(fpath, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                            if isinstance(data, dict) and "name" in data:
+                                display_name = f"[Subject] {fname} ({data['name']})"
+                    except Exception:
+                        pass
+                    result.append((fname, display_name))
+
+        # Subject folder active: do NOT look in main templates directory!
+        result.append(("None", "None"))
+        return result
+
+    # 2. Base App templates (only used when in default project root mode)
+    try:
+        from VocalTrack import ipalabels
+        templates_dir = ipalabels.get_external_path("templates")
+    except Exception:
+        templates_dir = os.path.join(os.path.abspath("."), "templates")
+        
+    if os.path.isdir(templates_dir):
+        for fname in sorted(os.listdir(templates_dir)):
+            if fname.endswith(".json"):
+                fpath = os.path.join(templates_dir, fname)
+                display_name = fname
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        if isinstance(data, dict) and "name" in data:
+                            display_name = f"{fname} ({data['name']})"
+                except Exception:
+                    pass
+                result.append((fname, display_name))
+
+    result.append(("None", "None"))
+    return result
+
+# Shown on the FPS field of the modes whose analysis rate follows the display (all but LiveSpectrogram)
+FPS_TOOLTIP = ("Display refresh rate. One analysis is made per frame,\n"
+               "so this also sets the time step between analyses (1000 / FPS ms).")
+
 
 class BaseSettingsDialog(QDialog):
     """A 'cookie-cutter' template for all our popup windows.
@@ -80,6 +145,44 @@ class BaseSettingsDialog(QDialog):
         """Reset inputs to factory default values. Subclasses should override this."""
         pass
 
+    def showEvent(self, event):
+        """Make numeric fields use '.' as the decimal point regardless of the system locale,
+        matching how values are parsed (float()) and saved."""
+        for line_edit in self.findChildren(QLineEdit):
+            validator = line_edit.validator()
+            if validator is not None:
+                validator.setLocale(QLocale.c())
+        super().showEvent(event)
+
+    def validate_settings(self):
+        """Cross-field checks for subclasses. Return an error message, or None if valid."""
+        return None
+
+    def accept(self):
+        """Only close with OK when every field holds a complete, in-range value."""
+        for line_edit in self.findChildren(QLineEdit):
+            validator = line_edit.validator()
+            if validator is None:
+                continue
+            state = validator.validate(line_edit.text(), 0)[0]
+            if state != QValidator.State.Acceptable:
+                label = self.form.labelForField(line_edit)
+                name = label.text().rstrip(':') if label is not None else "A field"
+                if isinstance(validator, QIntValidator):
+                    allowed = f"a whole number from {validator.bottom()} to {validator.top()}"
+                else:
+                    allowed = f"a number from {validator.bottom():g} to {validator.top():g}"
+                QMessageBox.warning(self, "Invalid value",
+                                    f"{name}: '{line_edit.text()}' is not valid. Enter {allowed}.")
+                line_edit.setFocus()
+                line_edit.selectAll()
+                return
+        error = self.validate_settings()
+        if error:
+            QMessageBox.warning(self, "Invalid settings", error)
+            return
+        super().accept()
+
 
 class AnalysisSettingsDialog(BaseSettingsDialog):
     """Popup window for the core audio math settings.
@@ -95,21 +198,18 @@ class AnalysisSettingsDialog(BaseSettingsDialog):
         # Look in the save file for the 'analysis' folder. If it's empty, create a blank one.
         saved = mgr.get('analysis', {})
         
-        # Create a text box for typing in the audio chunk duration
+        # Create a text box for typing in the analysis window length
         # We try to load the saved number. If there is no saved number, use the default from config.py
-        self.chunk_input = QLineEdit(str(saved.get('chunk_ms', config.AUDIO_CONFIG.get('chunk_ms', 5))))
+        self.window_input = QLineEdit(f"{saved.get('window_ms', config.AUDIO_CONFIG.get('window_ms', 50)):g}")
         # Put ghost text in the box to tell the user we want milliseconds (ms)
-        self.chunk_input.setPlaceholderText("ms")
-        # Add a label "Chunk Duration" and place the text box next to it in the form
-        self.form.addRow("Chunk Duration (ms):", self.chunk_input)
-        
-        # Create a text box for the number of audio chunks to process at once
-        self.chunks_input = QLineEdit(str(saved.get('number_of_chunks', config.AUDIO_CONFIG.get('number_of_chunks', 5))))
-        # Add ghost text showing an example number
-        self.chunks_input.setPlaceholderText("e.g. 5")
-        # Add it to the form
-        self.form.addRow("Number of Chunks:", self.chunks_input)
-        
+        self.window_input.setPlaceholderText("ms")
+        # One analysis is made per display frame, so the step between windows follows the FPS setting
+        self.window_input.setToolTip("Length of audio in each analysis (LiveVowel and LivePitch).\n"
+                                     "One analysis is made per display frame, so the time step\n"
+                                     "between analyses is set by the FPS in the plot settings.")
+        # Add a label "Window Length" and place the text box next to it in the form
+        self.form.addRow("Window Length (ms):", self.window_input)
+
         # Create a text box for the maximum frequency the math should look for
         self.max_formant_input = QLineEdit(str(saved.get('max_formant', config.ANALYSIS_CONFIG.get('max_formant', 5000))))
         # Add ghost text for Hertz (Hz)
@@ -132,21 +232,21 @@ class AnalysisSettingsDialog(BaseSettingsDialog):
         self.form.addRow("Min f0 (Hz):", self.min_f0_input)
         
         # Create a text box for the highest possible voice pitch
-        self.max_f0_input = QLineEdit(str(saved.get('max_f0', config.ANALYSIS_CONFIG.get('max_f0', 300))))
+        self.max_f0_input = QLineEdit(str(saved.get('max_f0', config.ANALYSIS_CONFIG.get('max_f0', 500))))
         # Add ghost text for Hertz
         self.max_f0_input.setPlaceholderText("Hz")
         # Add it to the form
         self.form.addRow("Max f0 (Hz):", self.max_f0_input)
 
         # Create a text box for how confident the math needs to be before drawing a pitch line
-        self.min_confidence_input = QLineEdit(str(saved.get('min_confidence', config.ANALYSIS_CONFIG.get('min_confidence', 0.2))))
+        self.min_confidence_input = QLineEdit(str(saved.get('min_confidence', config.ANALYSIS_CONFIG.get('min_confidence', 0.45))))
         # Tell the user the number must be between 0.0 and 1.0
         self.min_confidence_input.setPlaceholderText("0.0 - 1.0")
         # Add it to the form
         self.form.addRow("Min Confidence:", self.min_confidence_input)
 
         # Create a text box for the silence gate (how loud you must speak to be heard)
-        self.min_rms_input = QLineEdit(str(saved.get('min_rms_db', config.AUDIO_CONFIG.get('min_rms_db', -45.0))))
+        self.min_rms_input = QLineEdit(str(saved.get('min_rms_db', config.AUDIO_CONFIG.get('min_rms_db', -60.0))))
         # Provide an example of a decibel (dBFS) number
         self.min_rms_input.setPlaceholderText("e.g. -45")
         # Add it to the form
@@ -155,9 +255,9 @@ class AnalysisSettingsDialog(BaseSettingsDialog):
         # Create a dropdown menu to let the user pick which math engine calculates formants
         self.formant_method_combo = QComboBox()
         # Put choices into the dropdown list
-        self.formant_method_combo.addItems(["native", "wlp", "parselmouth", "custom"])
+        self.formant_method_combo.addItems(["lpc", "wlp", "parselmouth", "custom"])
         # Figure out which one they were using last time
-        current_formant = saved.get('formant_method', config.ANALYSIS_CONFIG.get('formant_method', 'native'))
+        current_formant = saved.get('formant_method', config.ANALYSIS_CONFIG.get('formant_method', 'lpc'))
         # Find where that choice lives in our list (is it item 0, 1, or 2?)
         idx = self.formant_method_combo.findText(current_formant)
         # If we found it, make the dropdown display that choice
@@ -167,10 +267,10 @@ class AnalysisSettingsDialog(BaseSettingsDialog):
 
         # Create another dropdown menu, this time for calculating pitch
         self.pitch_method_combo = QComboBox()
-        # Put the same three choices in the list
-        self.pitch_method_combo.addItems(["native", "parselmouth", "custom"])
+        # Put the pitch trackers in the list: built-in autocorrelation, built-in YIN, Praat, or your own
+        self.pitch_method_combo.addItems(["autocorrelation", "yin", "parselmouth", "custom"])
         # Figure out what they used last time
-        current_pitch = saved.get('pitch_method', config.ANALYSIS_CONFIG.get('pitch_method', 'native'))
+        current_pitch = saved.get('pitch_method', config.ANALYSIS_CONFIG.get('pitch_method', 'autocorrelation'))
         # Find it in the list
         idx = self.pitch_method_combo.findText(current_pitch)
         # Make the dropdown display it
@@ -179,8 +279,7 @@ class AnalysisSettingsDialog(BaseSettingsDialog):
         self.form.addRow("Pitch Method:", self.pitch_method_combo)
         
         # Apply validators to restrict user input to valid ranges/types
-        self.chunk_input.setValidator(QIntValidator(1, 1000, self))
-        self.chunks_input.setValidator(QIntValidator(1, 100, self))
+        self.window_input.setValidator(QDoubleValidator(1.0, 1000.0, 2, self))
         self.max_formant_input.setValidator(QIntValidator(1000, 20000, self))
         self.n_formants_input.setValidator(QDoubleValidator(1.0, 20.0, 2, self))
         self.min_f0_input.setValidator(QIntValidator(10, 1000, self))
@@ -188,14 +287,17 @@ class AnalysisSettingsDialog(BaseSettingsDialog):
         self.min_confidence_input.setValidator(QDoubleValidator(0.0, 1.0, 4, self))
         self.min_rms_input.setValidator(QDoubleValidator(-120.0, 0.0, 2, self))
         
+    def validate_settings(self):
+        if safe_int(self.min_f0_input.text()) >= safe_int(self.max_f0_input.text()):
+            return "Min f0 must be lower than Max f0."
+        return None
+
     def get_settings(self):
         """Gathers everything the user typed, packages it, and sends it back to the main app."""
         # Return a dictionary (a labeled list of items)
         return {
-            # Read the text box, convert it safely to an int
-            'chunk_ms': safe_int(self.chunk_input.text(), 5),
-            # Read the text box, convert to whole number
-            'number_of_chunks': safe_int(self.chunks_input.text(), 5),
+            # Read the text box, convert it safely to a decimal number
+            'window_ms': safe_float(self.window_input.text(), 50.0),
             # Read the text box, convert to whole number
             'max_formant': safe_int(self.max_formant_input.text(), 5000),
             # Read the text box, convert to a decimal number (float)
@@ -203,11 +305,11 @@ class AnalysisSettingsDialog(BaseSettingsDialog):
             # Read the text box, convert to whole number
             'min_f0': safe_int(self.min_f0_input.text(), 60),
             # Read the text box, convert to whole number
-            'max_f0': safe_int(self.max_f0_input.text(), 300),
+            'max_f0': safe_int(self.max_f0_input.text(), 500),
             # Read the text box, convert to decimal number
-            'min_confidence': safe_float(self.min_confidence_input.text(), 0.2),
+            'min_confidence': safe_float(self.min_confidence_input.text(), 0.45),
             # Read the text box, convert to decimal number
-            'min_rms_db': safe_float(self.min_rms_input.text(), -45.0),
+            'min_rms_db': safe_float(self.min_rms_input.text(), -60.0),
             # Read the currently selected text from the formant dropdown menu
             'formant_method': self.formant_method_combo.currentText(),
             # Read the currently selected text from the pitch dropdown menu
@@ -215,8 +317,7 @@ class AnalysisSettingsDialog(BaseSettingsDialog):
         }
 
     def load_defaults(self):
-        self.chunk_input.setText(str(config.FACTORY_AUDIO_CONFIG['chunk_ms']))
-        self.chunks_input.setText(str(config.FACTORY_AUDIO_CONFIG['number_of_chunks']))
+        self.window_input.setText(f"{config.FACTORY_AUDIO_CONFIG['window_ms']:g}")
         self.max_formant_input.setText(str(config.FACTORY_ANALYSIS_CONFIG['max_formant']))
         self.n_formants_input.setText(str(config.FACTORY_ANALYSIS_CONFIG['n_formants']))
         self.min_f0_input.setText(str(config.FACTORY_ANALYSIS_CONFIG['min_f0']))
@@ -242,12 +343,12 @@ class SmootherSettingsDialog(BaseSettingsDialog):
         saved = mgr.get('smoother', {})
         
         # Create a text box for memory size (how many past dots it remembers)
-        self.memory_input = QLineEdit(str(saved.get('memory_n', config.SMOOTHER_CONFIG.get('memory_n', 5))))
+        self.memory_input = QLineEdit(str(saved.get('memory_n', config.SMOOTHER_CONFIG.get('memory_n', 3))))
         # Add it to the form
         self.form.addRow("Memory frames (1=no memory)", self.memory_input)
         
         # Create a text box for stability (how far a dot can jump before we consider it an error)
-        self.stability_input = QLineEdit(str(saved.get('stability_threshold', config.SMOOTHER_CONFIG.get('stability_threshold', 0.32))))
+        self.stability_input = QLineEdit(str(saved.get('stability_threshold', config.SMOOTHER_CONFIG.get('stability_threshold', 0.15))))
         # Add it to the form
         self.form.addRow("Stability Threshold:", self.stability_input)
         
@@ -308,8 +409,8 @@ class SmootherSettingsDialog(BaseSettingsDialog):
     def get_settings(self):
         """Gathers the smoother settings and packages them up."""
         return {
-            'memory_n': safe_int(self.memory_input.text(), 5),
-            'stability_threshold': safe_float(self.stability_input.text(), 0.32),
+            'memory_n': safe_int(self.memory_input.text(), 3),
+            'stability_threshold': safe_float(self.stability_input.text(), 0.15),
             'skip_tolerance': safe_int(self.skip_input.text(), 2),
             'use_euro_filter': self.use_euro_filter_checkbox.isChecked(),
             'euro_min_cutoff': safe_float(self.euro_min_cutoff_input.text(), 0.05),
@@ -327,6 +428,9 @@ class SmootherSettingsDialog(BaseSettingsDialog):
         self.euro_beta_input.setText(str(config.FACTORY_SMOOTHER_CONFIG['euro_beta']))
         self.euro_dcutoff_input.setText(str(config.FACTORY_SMOOTHER_CONFIG['euro_dcutoff']))
         self.velocity_power_input.setText(str(config.FACTORY_SMOOTHER_CONFIG['velocity_power']))
+
+
+
 
 
 
@@ -365,6 +469,7 @@ class PlottingSettingsDialog(BaseSettingsDialog):
         
         # Create a text box for Frames Per Second (how fast the animation updates)
         self.fps_input = QLineEdit(str(saved.get('fps', config.LIVEVOWEL_CONFIG.get('fps', 60))))
+        self.fps_input.setToolTip(FPS_TOOLTIP)
         # Add to form
         self.form.addRow("FPS:", self.fps_input)
         
@@ -391,6 +496,18 @@ class PlottingSettingsDialog(BaseSettingsDialog):
         self.freq_scale_combo.setCurrentIndex(0 if current_scale == 'log' else 1)
         # Add dropdown to form
         self.form.addRow("Frequency Scale:", self.freq_scale_combo)
+
+        # Vowel Template selection dropdown (persisted to settings)
+        self.template_combo = QComboBox()
+        self.available_templates = get_available_templates()
+        current_template = config.LIVEVOWEL_CONFIG.get('template_file', config.FACTORY_LIVEVOWEL_CONFIG['template_file'])
+        selected_idx = 0
+        for idx, (fname, display_name) in enumerate(self.available_templates):
+            self.template_combo.addItem(display_name, fname)
+            if fname.lower() == str(current_template).lower():
+                selected_idx = idx
+        self.template_combo.setCurrentIndex(selected_idx)
+        self.form.addRow("Vowel Template:", self.template_combo)
         
         # Apply input validators
         self.f1_min_input.setValidator(QDoubleValidator(0.0, 10000.0, 2, self))
@@ -399,12 +516,22 @@ class PlottingSettingsDialog(BaseSettingsDialog):
         self.f2_max_input.setValidator(QDoubleValidator(0.0, 20000.0, 2, self))
         self.fps_input.setValidator(QIntValidator(1, 240, self))
         
+    def validate_settings(self):
+        if safe_float(self.f1_min_input.text()) >= safe_float(self.f1_max_input.text()):
+            return "F1 Min must be lower than F1 Max."
+        if safe_float(self.f2_min_input.text()) >= safe_float(self.f2_max_input.text()):
+            return "F2 Min must be lower than F2 Max."
+        if safe_float(self.f1_min_input.text()) <= 0 or safe_float(self.f2_min_input.text()) <= 0:
+            return "F1 Min and F2 Min must be above 0 Hz (needed for the logarithmic scale)."
+        return None
+
     def get_settings(self):
         """Gathers settings and translates dropdown choices back into code words."""
         # Create a list of the code words for display modes
         modes = ["single", "track", "all"]
         # Create a list of the code words for scales
         scales = ["log", "linear"]
+        selected_template = self.template_combo.currentData() or self.template_combo.currentText()
         return {
             # Package the two F1 text boxes together as a pair (tuple) of decimal numbers
             'f1_range': (safe_float(self.f1_min_input.text(), 200.0), safe_float(self.f1_max_input.text(), 1200.0)),
@@ -416,6 +543,8 @@ class PlottingSettingsDialog(BaseSettingsDialog):
             'display_mode': modes[self.display_mode_combo.currentIndex()],
             # Look up the scale code word based on the dropdown
             'freq_scale': scales[self.freq_scale_combo.currentIndex()],
+            # Active template selection for the current session
+            'template_file': selected_template,
         }
 
     def load_defaults(self):
@@ -433,6 +562,11 @@ class PlottingSettingsDialog(BaseSettingsDialog):
         
         idx2 = 0 if config.FACTORY_LIVEVOWEL_CONFIG['freq_scale'] == 'log' else 1
         self.freq_scale_combo.setCurrentIndex(idx2)
+
+        for idx in range(self.template_combo.count()):
+            if str(self.template_combo.itemData(idx)).lower() == config.FACTORY_LIVEVOWEL_CONFIG['template_file'].lower():
+                self.template_combo.setCurrentIndex(idx)
+                break
 
 
 
@@ -471,7 +605,13 @@ class PitchPlotSettingsDialog(BaseSettingsDialog):
         self.window_width_input = QLineEdit(str(saved.get('pitch_display_seconds', config.LIVEPITCH_CONFIG.get('pitch_display_seconds', 5.0))))
         # Add to form
         self.form.addRow("Display Window (seconds):", self.window_width_input)
-        
+
+        # Text box for Frames Per Second (how fast the animation updates)
+        self.fps_input = QLineEdit(str(saved.get('fps', config.LIVEPITCH_CONFIG.get('fps', 60))))
+        self.fps_input.setToolTip(FPS_TOOLTIP)
+        # Add to form
+        self.form.addRow("FPS:", self.fps_input)
+
         # Dropdown for grid spacing (Log vs Linear)
         self.freq_scale_combo = QComboBox()
         # Add the two options
@@ -487,7 +627,13 @@ class PitchPlotSettingsDialog(BaseSettingsDialog):
         self.min_f0_input.setValidator(QIntValidator(10, 1000, self))
         self.max_f0_input.setValidator(QIntValidator(20, 3000, self))
         self.window_width_input.setValidator(QDoubleValidator(0.1, 100.0, 2, self))
-        
+        self.fps_input.setValidator(QIntValidator(1, 240, self))
+
+    def validate_settings(self):
+        if safe_int(self.min_f0_input.text()) >= safe_int(self.max_f0_input.text()):
+            return "Min f0 must be lower than Max f0."
+        return None
+
     def get_settings(self):
         """Gathers settings and translates dropdown choices."""
         # List of scale code words
@@ -501,6 +647,8 @@ class PitchPlotSettingsDialog(BaseSettingsDialog):
             'pitch_plot_mode': "fixed" if self.mode_combo.currentIndex() == 0 else "continuous",
             # Convert seconds to a decimal number
             'pitch_display_seconds': safe_float(self.window_width_input.text(), 5.0),
+            # Convert FPS to whole number
+            'fps': safe_int(self.fps_input.text(), 60),
             # Look up the scale code word based on dropdown index
             'freq_scale': scales[self.freq_scale_combo.currentIndex()],
         }
@@ -513,6 +661,7 @@ class PitchPlotSettingsDialog(BaseSettingsDialog):
         self.mode_combo.setCurrentIndex(idx1)
         
         self.window_width_input.setText(str(config.FACTORY_LIVEPITCH_CONFIG['pitch_display_seconds']))
+        self.fps_input.setText(str(config.FACTORY_LIVEPITCH_CONFIG['fps']))
         
         idx2 = 0 if config.FACTORY_LIVEPITCH_CONFIG['freq_scale'] == 'log' else 1
         self.freq_scale_combo.setCurrentIndex(idx2)
@@ -535,7 +684,7 @@ class SpectrogramSettingsDialog(BaseSettingsDialog):
         self.form.addRow("Max Frequency (Hz):", self.max_freq_input)
         
         # Text box for how many seconds of audio history stay on screen
-        self.display_seconds_input = QLineEdit(str(saved.get('display_seconds', config.LIVESPECTROGRAM_CONFIG.get('display_seconds', 1.0))))
+        self.display_seconds_input = QLineEdit(str(saved.get('display_seconds', config.LIVESPECTROGRAM_CONFIG.get('display_seconds', 3.0))))
         # Add to form
         self.form.addRow("Display Window (seconds):", self.display_seconds_input)
         
@@ -567,16 +716,19 @@ class SpectrogramSettingsDialog(BaseSettingsDialog):
         # Add to form
         self.form.addRow("Default Gain (dB):", self.gain_input)
 
-        # Text box for chunk duration (how wide each vertical pixel slice is in time)
-        self.chunk_ms_input = QLineEdit(str(saved.get('chunk_ms', config.LIVESPECTROGRAM_CONFIG.get('chunk_ms', 15.0))))
+        # Text box for the analysis window length (short = wide-band, long = narrow-band)
+        self.window_ms_input = QLineEdit(str(saved.get('window_ms', config.LIVESPECTROGRAM_CONFIG.get('window_ms', 6.0))))
         # Add to form
-        self.form.addRow("Chunk Duration (ms):", self.chunk_ms_input)
+        self.form.addRow("Window Length (ms):", self.window_ms_input)
 
-        # Text box for overlapping slices to make the image smoother
-        self.number_of_chunks_input = QLineEdit(str(saved.get('number_of_chunks', config.LIVESPECTROGRAM_CONFIG.get('number_of_chunks', 3))))
+        # Text box for the time step (how wide each vertical pixel slice is in time)
+        self.time_step_ms_input = QLineEdit(str(saved.get('time_step_ms', config.LIVESPECTROGRAM_CONFIG.get('time_step_ms', 6.0))))
+        self.time_step_ms_input.setToolTip("Time between analyses: each one is drawn as one column.\n"
+                                           "A step shorter than the window makes the windows overlap;\n"
+                                           "a longer one leaves audio between windows unanalyzed.")
         # Add to form
-        self.form.addRow("Number of Chunks:", self.number_of_chunks_input)
-        
+        self.form.addRow("Time Step (ms):", self.time_step_ms_input)
+
         # Text box for padding (a math trick to increase vertical pixel resolution)
         self.padding_length_input = QLineEdit(str(saved.get('padding_length_ms', config.LIVESPECTROGRAM_CONFIG.get('padding_length_ms', 20.0))))
         # Add to form
@@ -587,9 +739,9 @@ class SpectrogramSettingsDialog(BaseSettingsDialog):
         self.display_seconds_input.setValidator(QDoubleValidator(0.1, 100.0, 2, self))
         self.fps_input.setValidator(QIntValidator(1, 240, self))
         self.dynamic_range_input.setValidator(QIntValidator(10, 150, self))
-        self.gain_input.setValidator(QIntValidator(0, 80, self))
-        self.chunk_ms_input.setValidator(QDoubleValidator(0.1, 1000.0, 2, self))
-        self.number_of_chunks_input.setValidator(QIntValidator(1, 100, self))
+        self.gain_input.setValidator(QDoubleValidator(0.0, 80.0, 2, self))
+        self.window_ms_input.setValidator(QDoubleValidator(0.1, 1000.0, 2, self))
+        self.time_step_ms_input.setValidator(QDoubleValidator(0.1, 1000.0, 2, self))
         self.padding_length_input.setValidator(QDoubleValidator(0.0, 1000.0, 2, self))
         
     def get_settings(self):
@@ -598,7 +750,7 @@ class SpectrogramSettingsDialog(BaseSettingsDialog):
             # Convert max frequency to whole number
             'max_freq': safe_int(self.max_freq_input.text(), 5000),
             # Convert display width to decimal number
-            'display_seconds': safe_float(self.display_seconds_input.text(), 1.0),
+            'display_seconds': safe_float(self.display_seconds_input.text(), 3.0),
             # Convert FPS to whole number
             'fps': safe_int(self.fps_input.text(), 60),
             # For the color map, just grab the actual text string directly
@@ -606,11 +758,11 @@ class SpectrogramSettingsDialog(BaseSettingsDialog):
             # Convert contrast number to whole number
             'dynamic_range': safe_int(self.dynamic_range_input.text(), 40),
             # Convert gain to whole number
-            'gain_db': safe_int(self.gain_input.text(), 0),
-            # Convert chunk size to decimal
-            'chunk_ms': safe_float(self.chunk_ms_input.text(), 15.0),
-            # Convert chunk count to whole number
-            'number_of_chunks': safe_int(self.number_of_chunks_input.text(), 3),
+            'gain_db': safe_float(self.gain_input.text(), 0.0),
+            # Convert window length to decimal
+            'window_ms': safe_float(self.window_ms_input.text(), 6.0),
+            # Convert time step to decimal
+            'time_step_ms': safe_float(self.time_step_ms_input.text(), 6.0),
             # Convert padding to decimal
             'padding_length_ms': safe_float(self.padding_length_input.text(), 20.0),
         }
@@ -625,8 +777,8 @@ class SpectrogramSettingsDialog(BaseSettingsDialog):
         
         self.dynamic_range_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['dynamic_range']))
         self.gain_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG.get('gain_db', 0.0)))
-        self.chunk_ms_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['chunk_ms']))
-        self.number_of_chunks_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['number_of_chunks']))
+        self.window_ms_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['window_ms']))
+        self.time_step_ms_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['time_step_ms']))
         self.padding_length_input.setText(str(config.FACTORY_LIVESPECTROGRAM_CONFIG['padding_length_ms']))
 
 
@@ -642,32 +794,28 @@ class SpectrumSettingsDialog(BaseSettingsDialog):
         saved = mgr.get('spectrum', {})
         
         # Text box for the right-side limit of the horizontal frequency axis
-        self.max_freq_input = QLineEdit(str(saved.get('max_freq', config.LIVESPECTRUM_CONFIG.get('max_freq', 5000))))
+        self.max_freq_input = QLineEdit(str(saved.get('max_freq', config.LIVESPECTRUM_CONFIG.get('max_freq', 8000))))
         # Add to form
         self.form.addRow("Max Frequency (Hz):", self.max_freq_input)
         
         # Text box for the contrast/depth of the vertical decibel axis
-        self.dynamic_range_input = QLineEdit(str(saved.get('dynamic_range', config.LIVESPECTRUM_CONFIG.get('dynamic_range', 40))))
+        self.dynamic_range_input = QLineEdit(str(saved.get('dynamic_range', config.LIVESPECTRUM_CONFIG.get('dynamic_range', 70))))
         # Add to form
         self.form.addRow("Dynamic Range (dB):", self.dynamic_range_input)
         
         # Text box for default gain offset (adjustable in window with +/-)
-        self.gain_input = QLineEdit(str(saved.get('gain_offset_db', config.LIVESPECTRUM_CONFIG.get('gain_offset_db', 0.0))))
+        self.gain_input = QLineEdit(str(saved.get('gain_offset_db', config.LIVESPECTRUM_CONFIG.get('gain_offset_db', -30.0))))
         # Add to form
         self.form.addRow("Default Gain (dB):", self.gain_input)
 
         # Text box for how much audio time is analyzed to draw one line
-        self.chunk_ms_input = QLineEdit(str(saved.get('chunk_ms', config.LIVESPECTRUM_CONFIG.get('chunk_ms', 15.0))))
+        self.window_ms_input = QLineEdit(str(saved.get('window_ms', config.LIVESPECTRUM_CONFIG.get('window_ms', 50.0))))
         # Add to form
-        self.form.addRow("Chunk Duration (ms):", self.chunk_ms_input)
+        self.form.addRow("Window Length (ms):", self.window_ms_input)
 
-        # Text box for chunk overlap count
-        self.number_of_chunks_input = QLineEdit(str(saved.get('number_of_chunks', config.LIVESPECTRUM_CONFIG.get('number_of_chunks', 3))))
-        # Add to form
-        self.form.addRow("Number of Chunks:", self.number_of_chunks_input)
-        
         # Text box for display framerate
         self.fps_input = QLineEdit(str(saved.get('fps', config.LIVESPECTRUM_CONFIG.get('fps', 60))))
+        self.fps_input.setToolTip(FPS_TOOLTIP)
         # Add to form
         self.form.addRow("Display FPS:", self.fps_input)
         
@@ -684,9 +832,8 @@ class SpectrumSettingsDialog(BaseSettingsDialog):
         # Apply input validators
         self.max_freq_input.setValidator(QIntValidator(1000, 48000, self))
         self.dynamic_range_input.setValidator(QIntValidator(10, 150, self))
-        self.gain_input.setValidator(QIntValidator(-100, 100, self))
-        self.chunk_ms_input.setValidator(QDoubleValidator(0.1, 1000.0, 2, self))
-        self.number_of_chunks_input.setValidator(QIntValidator(1, 100, self))
+        self.gain_input.setValidator(QDoubleValidator(-100.0, 100.0, 2, self))
+        self.window_ms_input.setValidator(QDoubleValidator(0.1, 1000.0, 2, self))
         self.fps_input.setValidator(QIntValidator(1, 240, self))
         self.padding_length_input.setValidator(QDoubleValidator(0.0, 1000.0, 2, self))
         self.smoothing_input.setValidator(QDoubleValidator(0.0, 1.0, 4, self))
@@ -695,15 +842,13 @@ class SpectrumSettingsDialog(BaseSettingsDialog):
         """Gathers settings for the spectrum line graph."""
         return {
             # Convert max freq to whole number
-            'max_freq': safe_int(self.max_freq_input.text(), 5000),
+            'max_freq': safe_int(self.max_freq_input.text(), 8000),
             # Convert dynamic range to whole number
-            'dynamic_range': safe_int(self.dynamic_range_input.text(), 40),
-            # Convert gain to whole number
-            'gain_offset_db': safe_int(self.gain_input.text(), 0),
-            # Convert chunk size to decimal
-            'chunk_ms': safe_float(self.chunk_ms_input.text(), 15.0),
-            # Convert chunk count to whole number
-            'number_of_chunks': safe_int(self.number_of_chunks_input.text(), 3),
+            'dynamic_range': safe_int(self.dynamic_range_input.text(), 70),
+            # Convert gain to a decimal number
+            'gain_offset_db': safe_float(self.gain_input.text(), -30.0),
+            # Convert window length to decimal
+            'window_ms': safe_float(self.window_ms_input.text(), 50.0),
             # Convert FPS to whole number
             'fps': safe_int(self.fps_input.text(), 60),
             # Convert padding size to decimal
@@ -716,29 +861,41 @@ class SpectrumSettingsDialog(BaseSettingsDialog):
         self.max_freq_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['max_freq']))
         self.dynamic_range_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['dynamic_range']))
         self.gain_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG.get('gain_offset_db', 0.0)))
-        self.chunk_ms_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['chunk_ms']))
-        self.number_of_chunks_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['number_of_chunks']))
+        self.window_ms_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['window_ms']))
         self.fps_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['fps']))
         self.padding_length_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['padding_length_ms']))
         self.smoothing_input.setText(str(config.FACTORY_LIVESPECTRUM_CONFIG['smoothing']))
 
 
 
-class RecordingSettingsDialog(BaseSettingsDialog):
-    """Popup window for selecting which physical microphone to use and recording options."""
+class DataSettingsDialog(BaseSettingsDialog):
+    """Popup window for selecting project/subject data folders, microphone, and file export settings."""
     def __init__(self, parent=None):
-        # Use template, title it "Recording Settings", and make it slightly wider to fit long microphone names
-        super().__init__("Recording Settings", parent, min_width=450)
+        # Use template, title it "Data & Recording Settings", and make it wide enough for file paths
+        super().__init__("Data & Recording Settings", parent, min_width=500)
         
         # Get the tool that remembers user preferences
         mgr = settings_manager.get_settings_manager()
         # Look in the save file for the 'recording' folder. If it's empty, create a blank one.
         saved = mgr.get('recording', {})
         
-        # Create a dropdown menu
+        # 1. Subject / Data Folder row with Browse button
+        self.data_dir_input = QLineEdit(str(saved.get('data_dir', config.EXPORT_CONFIG.get('data_dir', '.'))))
+        browse_btn = QPushButton("Browse...")
+        browse_btn.clicked.connect(self._browse_data_dir)
+        
+        folder_layout = QHBoxLayout()
+        folder_layout.addWidget(self.data_dir_input)
+        folder_layout.addWidget(browse_btn)
+        self.form.addRow("Subject / Data Folder:", folder_layout)
+
+        # 2. Audio Input Device dropdown
         self.device_combo = QComboBox()
         # Ask the custom audio tool to look at the computer and build a list of all plugged-in microphones
         self.devices = audio_devices.get_audio_devices()
+        
+        saved_device_idx = saved.get('input_device_index')
+        saved_device_name = saved.get('device_name')
         
         # If the computer didn't find ANY microphones...
         if not self.devices:
@@ -748,28 +905,41 @@ class RecordingSettingsDialog(BaseSettingsDialog):
             self.device_combo.setEnabled(False)
         # If microphones WERE found...
         else:
+            selected_index = 0
+            default_index = 0
+            found_saved = False
             # Loop through the list of found microphones one by one
-            # It gives us an ID number, a name, and a True/False if it's the computer's primary mic
-            for device_idx, device_name, is_default in self.devices:
-                # Create a text label. If it's the primary mic, add the word "[DEFAULT]" to the end.
+            for idx, (device_idx, device_name, is_default) in enumerate(self.devices):
                 display_name = f"{device_name} {'[DEFAULT]' if is_default else ''}"
-                # Add the name to the dropdown, and secretly attach its computer ID number to it
                 self.device_combo.addItem(display_name, device_idx)
-                # If this specific mic is the default...
                 if is_default:
-                    # Force the dropdown menu to pre-select it automatically
-                    self.device_combo.setCurrentIndex(self.device_combo.count() - 1)
+                    default_index = idx
+                if saved_device_name and device_name == saved_device_name:
+                    selected_index = idx
+                    found_saved = True
+                elif saved_device_idx is not None and device_idx == saved_device_idx and not saved_device_name:
+                    selected_index = idx
+
+            # If no previous custom device was saved, select system default
+            if saved_device_name is None and saved_device_idx is None:
+                selected_index = default_index
+            elif saved_device_name and not found_saved:
+                # The saved microphone is not connected right now: keep it as the selection, so that
+                # pressing OK (e.g. after changing the folder) does not replace it with another device
+                self.device_combo.addItem(f"{saved_device_name} [NOT CONNECTED]", saved_device_idx)
+                selected_index = self.device_combo.count() - 1
+
+            self.device_combo.setCurrentIndex(selected_index)
         
         # Add the completed dropdown menu to the form layout
         self.form.addRow("Audio Input Device:", self.device_combo)
         
-        # Create a checkbox to enable/disable saving recordings
-        self.save_recordings_checkbox = QCheckBox("Save recordings (WAV and CSV files)")
-        # Set the initial state from saved settings (default: False/unchecked)
-        is_checked = saved.get('save_recordings', config.EXPORT_CONFIG.get('save_recordings', False))
-        self.save_recordings_checkbox.setChecked(is_checked)
-        # Add the checkbox to the form
-        self.form.addRow("", self.save_recordings_checkbox)
+        # 3. Create checkboxes for independent file export choices
+        self.save_csv_checkbox = QCheckBox("Save CSV data files (formants / pitch contours)")
+        self.save_csv_checkbox.setChecked(
+            saved.get('save_csv', config.EXPORT_CONFIG.get('save_csv', True))
+        )
+        self.form.addRow("", self.save_csv_checkbox)
 
         self.save_original_audio_checkbox = QCheckBox("Save original audio stream (device rate WAV)")
         self.save_original_audio_checkbox.setChecked(
@@ -784,13 +954,19 @@ class RecordingSettingsDialog(BaseSettingsDialog):
         self.form.addRow("", self.save_downsampled_audio_checkbox)
         
         # Create a small text label to help the user understand what to do
-        info_label = QLabel("Select your microphone or audio input device. Enable recording export to save CSV data plus either or both WAV streams from LivePitch and LiveVowel.")
+        info_label = QLabel("The Subject/Data folder acts as the project workspace: VocalTrack will look for custom settings (.VocalTrack_settings.json) in this folder, load vowel targets from a templates/ subfolder, and output saved audio/CSV files into a recordings/ subfolder.")
         # Color the text gray and make it small
         info_label.setStyleSheet("color: gray; font-size: 11px;")
         # Allow the text to wrap to a new line if the window gets too small
         info_label.setWordWrap(True)
         # Sneak this help text into the main vertical stack right below the form, but above the OK button
         self.main_layout.insertWidget(1, info_label)
+
+    def _browse_data_dir(self):
+        curr = self.data_dir_input.text().strip() or "."
+        selected = QFileDialog.getExistingDirectory(self, "Select Subject / Data Folder", curr)
+        if selected:
+            self.data_dir_input.setText(selected)
     
     def get_device_index(self):
         """Retrieves the secret computer ID number of the chosen microphone."""
@@ -802,17 +978,28 @@ class RecordingSettingsDialog(BaseSettingsDialog):
         return self.device_combo.currentData()
     
     def get_settings(self):
-        """Gathers the recording settings and packages them for the main app."""
+        """Gathers data and recording settings and packages them for the main app."""
+        # No device name when no input devices were found (the combo then shows a placeholder)
+        current_text = self.device_combo.currentText() if self.device_combo.isEnabled() else ''
+        clean_name = current_text.replace('[DEFAULT]', '').replace('[NOT CONNECTED]', '').strip() or None
+        save_csv = self.save_csv_checkbox.isChecked()
+        save_orig = self.save_original_audio_checkbox.isChecked()
+        save_down = self.save_downsampled_audio_checkbox.isChecked()
+        data_dir = self.data_dir_input.text().strip() or '.'
         return {
-            'save_recordings': self.save_recordings_checkbox.isChecked(),
-            'save_original_audio': self.save_original_audio_checkbox.isChecked(),
-            'save_downsampled_audio': self.save_downsampled_audio_checkbox.isChecked(),
+            'data_dir': data_dir,
+            'input_device_index': self.get_device_index(),
+            'device_name': clean_name,
+            'save_csv': save_csv,
+            'save_original_audio': save_orig,
+            'save_downsampled_audio': save_down,
         }
 
     def load_defaults(self):
-        self.save_recordings_checkbox.setChecked(bool(config.FACTORY_EXPORT_CONFIG['save_recordings']))
-        self.save_original_audio_checkbox.setChecked(bool(config.FACTORY_EXPORT_CONFIG['save_original_audio']))
-        self.save_downsampled_audio_checkbox.setChecked(bool(config.FACTORY_EXPORT_CONFIG['save_downsampled_audio']))
+        self.data_dir_input.setText(str(config.FACTORY_EXPORT_CONFIG.get('data_dir', '.')))
+        self.save_csv_checkbox.setChecked(bool(config.FACTORY_EXPORT_CONFIG.get('save_csv', True)))
+        self.save_original_audio_checkbox.setChecked(bool(config.FACTORY_EXPORT_CONFIG.get('save_original_audio', True)))
+        self.save_downsampled_audio_checkbox.setChecked(bool(config.FACTORY_EXPORT_CONFIG.get('save_downsampled_audio', False)))
         
         # Reset microphone to the default device index
         if self.device_combo.isEnabled():

@@ -1,16 +1,10 @@
-# Import logging module for status and debug messages
-# NumPy for numerical array operations and signal processing
-# Pygame for real-time graphics rendering
-# ScalarMappable for mapping normalized data values to RGBA colors using colormaps
-# Normalize for normalizing data to 0-1 range for colormap application
-# Matplotlib for colormap access
+# json and importlib.resources load the bundled colormap tables, NumPy handles the array
+# operations, and Pygame renders the display
 
 import json
 import logging
-import os
 import numpy as np
 import pygame
-import queue
 from importlib import resources
 
 # Import BaseAudioVisualizer for audio stream handling and display management
@@ -18,10 +12,10 @@ from importlib import resources
 # Import EventHolder for keyboard event detection
 # Import config for default settings and COLORS
 
-from .BaseAudioVisualizer import BaseAudioVisualizer
+from .BaseAudioVisualizer import BaseAudioVisualizer, fit_to_desktop
 from .AudioProcessor import AudioProcessor
 from .EventHolder import EventHolder
-from . import config, exporter
+from . import config
 
 # Create logger instance for this module
 logger = logging.getLogger(__name__)
@@ -30,7 +24,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
     """Real-time spectrogram visualization with scrolling display.
     
     This class generates a spectrogram from live audio input, displaying
-    time-domain scrolling frequency content using matplotlib colormaps and pygame rendering.
+    time-domain scrolling frequency content using the bundled colormap tables and pygame rendering.
     High-frequency content is boosted via pre-emphasis filtering for better visibility.
     Dynamic range and gain are user-adjustable for detail vs. contrast tradeoff.
     """
@@ -57,7 +51,8 @@ class LiveSpectrogram(BaseAudioVisualizer):
                  spec_config=None,
                  audio_config=None,
                  analysis_config=None,
-                 input_device_index=None):
+                 input_device_index=None,
+                 input_device_name=None):
         """Initialize LiveSpectrogram with optional configuration override.
         
         Args:
@@ -65,7 +60,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
             gui_height: Window height in pixels (overrides config default)
             max_freq: Maximum frequency to display in Hz (overrides config)
             display_seconds: Time window to display in seconds (overrides config)
-            colormap: Matplotlib colormap name (overrides config)
+            colormap: Name of a bundled colormap (overrides config)
             dynamic_range: dB range for spectrogram display (overrides config)
             sample_rate: Audio sample rate in Hz (overrides config)
             spec_config: Full spectrogram config dict (if None, uses config.LIVESPECTROGRAM_CONFIG)
@@ -78,8 +73,9 @@ class LiveSpectrogram(BaseAudioVisualizer):
         self.spec_config = spec_config or config.LIVESPECTROGRAM_CONFIG.copy()
         self.audio_config = audio_config or config.AUDIO_CONFIG.copy()
         self.analysis_config = analysis_config or config.ANALYSIS_CONFIG.copy()
-        # Store audio device selection for AudioProcessor
+        # Store audio device selection for AudioProcessor (the name takes priority over the index)
         self.input_device_index = input_device_index
+        self.input_device_name = input_device_name
 
         # Get FPS from config or default to 60 if not set
         self.fps = self.spec_config.get('fps', 60)
@@ -102,17 +98,23 @@ class LiveSpectrogram(BaseAudioVisualizer):
         # Override dynamic range in dB if specified
         if dynamic_range is not None:
             self.spec_config['dynamic_range'] = dynamic_range
-        # chunk_size parameter is deprecated and unused
         # Override sample rate if specified
         if sample_rate is not None:
             self.audio_config['sample_rate'] = sample_rate
 
-        # Use chunk-based settings from spectrogram config for the analysis window
-        chunk_ms = self.spec_config.get('chunk_ms', 15.0)
+        # Window length and time step from the spectrogram config. The audio chunk is one time step:
+        # each chunk gives one analysis, drawn as one column (so the step can be shorter than a frame)
+        window_length_ms = self.spec_config.get('window_ms', 6.0)
+        chunk_ms = self.spec_config.get('time_step_ms', 6.0)
         self.chunk_ms = chunk_ms
-        number_of_chunks = self.spec_config.get('number_of_chunks', 3)
         self.audio_config['chunk_ms'] = chunk_ms
-        self.audio_config['number_of_chunks'] = number_of_chunks
+        self.audio_config['window_ms'] = window_length_ms
+        # Only the spectrum is computed in this mode, so the audio buffer need be no longer than its window
+        self.analysis_config['window_length'] = window_length_ms / 1000.0
+
+        # Shrink the window (same aspect ratio) if it does not fit on this screen
+        self.spec_config['gui_width'], self.spec_config['gui_height'] = fit_to_desktop(
+            self.spec_config['gui_width'], self.spec_config['gui_height'])
 
         # Initialize base class with audio configuration and title
         super().__init__(
@@ -135,7 +137,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
         self.max_freq = self.spec_config['max_freq']
         # Store time window duration for horizontal scrolling calculation
         self.display_seconds = self.spec_config['display_seconds']
-        # Store colormap name for matplotlib color mapping (e.g., 'plasma', 'viridis')
+        # Store the name of the bundled colormap (e.g., 'plasma', 'viridis')
         self.colormap_name = self.spec_config['colormap']
         # Store dynamic range in dB for frequency axis amplitude clipping (controls contrast)
         self.dynamic_range = self.spec_config['dynamic_range']
@@ -151,13 +153,11 @@ class LiveSpectrogram(BaseAudioVisualizer):
         self.analysis_config['formants'] = False
         self.analysis_config['pitch'] = False
         
-        # FFT Analysis Parameters: window size is determined by chunk size and number of chunks
-        window_length_ms = chunk_ms * number_of_chunks
+        # FFT Analysis Parameters: window size from the window length setting
         self.window_length = window_length_ms / 1000.0  # For reference
         
         # Calculate total window size in samples.
-        self.window_samples = int(round(window_length_ms / 1000.0 * self.sample_rate))
-        self.window_samples = max(self.window_samples, 1)
+        self.window_samples = max(round(window_length_ms * self.sample_rate / 1000), 1)  # Same formula as AudioProcessor
 
         # FFT size configuration: append configurable zero padding for smoothness
         # Zero padding increases visual smoothness without changing time resolution
@@ -165,10 +165,6 @@ class LiveSpectrogram(BaseAudioVisualizer):
         zero_pad_samples = int(round((padding_length_ms / 1000.0) * self.sample_rate))
         # Total FFT size is window_samples + zero padding
         self.nfft = self.window_samples + zero_pad_samples
-        
-        # Pre-Emphasis Filter: boost high frequencies to compensate for speech spectral tilt
-        # Alpha coefficient (0.97) is standard for speech; amplifies fricatives and /s/ sounds
-        self.pre_emphasis = 0.97
         
         # Load a local 256-entry RGB lookup table for this colormap.
         self.colormap_table = self._load_colormap_table(self.colormap_name)
@@ -179,8 +175,6 @@ class LiveSpectrogram(BaseAudioVisualizer):
         # Initialize display with black background to avoid artifacts
         self.spec_surface.fill((0, 0, 0))
         
-        # Time tracking for calculating correct pixel positions during scrolling
-        self.current_time = 0.0
         # Calculate pixels per second: how many pixels to scroll per second of audio
         self.pixels_per_second = self.GUI_WIDTH / self.display_seconds
         
@@ -190,19 +184,27 @@ class LiveSpectrogram(BaseAudioVisualizer):
         self.column_width = int(round(self.pixels_per_second * time_per_column))
         # Ensure at least 1 pixel width
         self.column_width = max(self.column_width, 1)
-        
+        self._update_visible_seconds()
+
         # Pre-calculate frequency-to-pixel Y coordinate index mapping to save CPU on every frame
         num_bins = self.nfft // 2 + 1
         self.y_indices = (np.arange(self.GUI_HEIGHT) / self.GUI_HEIGHT * num_bins).astype(np.int32)
         
-        # Recording state management
+        # Rolling buffer of spectral magnitude (dB) across screen columns for Shift+Click inspection
+        self.spec_db_buffer = np.full((self.GUI_WIDTH, num_bins), -120.0, dtype=np.float32)
+
+        # Recording and pause state management
         self.keep_running = True  # Main loop control flag
-        # Toggle flag for audio buffer recording (not keyboard-controlled in spectrogram)
-        self.recording = False
+        self.paused = False       # Freeze/pause display toggle flag
+        self.recording = True     # Recording is active when running live
+        self.file_tag = 'spectrogram'  # Used in exported file names
         # Create unique session name for exported files (includes timestamp)
-        self.session_name = exporter.create_session_name('speaker')
-        # Buffer to accumulate audio samples when recording is enabled
-        self.audio_buffer = []
+        self.session_name = self.new_recording_name()
+        # Buffers to accumulate audio samples when recording is enabled
+        self.original_audio_buffer = []
+        self.downsampled_audio_buffer = []
+        self.original_recording_sample_rate = self.audio_config['sample_rate']
+        self.downsampled_recording_sample_rate = self.audio_config['sample_rate']
         
         # Pre-define colors as RGB tuples from config for faster access
         self.WHITE = config.COLORS['white']
@@ -215,7 +217,9 @@ class LiveSpectrogram(BaseAudioVisualizer):
         self.font_24_bold = pygame.font.SysFont('Arial', 24, bold=True)
         self.font_18 = pygame.font.SysFont('Arial', 18)
         self.font_20 = pygame.font.SysFont('Arial', 20)
-        
+        self.badge_font = self.font_16
+        self.badge_padding = (10, 6)
+
         # Enable spectrum computation in Sound objects (raw magnitude in dB, no processing)
         self.analysis_config['compute_spectrum'] = True
         self.analysis_config['spectrum_nfft'] = self.nfft
@@ -229,19 +233,35 @@ class LiveSpectrogram(BaseAudioVisualizer):
         # Initialize AudioProcessor to capture live audio from input device
         self.audio_processor = AudioProcessor(
             chunk_ms=self.audio_config.get('chunk_ms'),
-            number_of_chunks=self.audio_config.get('number_of_chunks'),
+            window_ms=self.audio_config.get('window_ms'),
             # Pass analysis config to disable formants internally
             analysis_config=self.analysis_config,
-            # Specify input device (None uses default device)
-            input_device_index=self.input_device_index
+            # Specify input device (None uses default device; the name takes priority over the index)
+            input_device_index=self.input_device_index,
+            input_device_name=self.input_device_name
         )
         # Start audio capture thread (runs in background, fills queue with chunks)
         self.audio_processor.start()
+        self.audio_processor.start_recording(
+            record_original=bool(config.EXPORT_CONFIG.get('save_original_audio', True)),
+            record_downsampled=bool(config.EXPORT_CONFIG.get('save_downsampled_audio', False))
+        )
+        self.original_recording_sample_rate = self.audio_processor.get_original_recording_sample_rate()
+        self.downsampled_recording_sample_rate = self.audio_processor.get_downsampled_recording_sample_rate()
         
         # Log initialization completion
         logger.info("LiveSpectrogram initialized")
         # Start the main event loop (blocking call)
         self.run()
+
+    def _update_visible_seconds(self):
+        """Compute the time span actually shown on screen.
+
+        Each chunk is drawn as a whole number of pixels, so the visible span can differ from
+        display_seconds (e.g. 2.4 px per column rounds to 2, showing 3.6 s instead of 3.0 s).
+        The time axis and inspection probe use this value so labels match the image.
+        """
+        self.visible_seconds = self.GUI_WIDTH / float(self.column_width) * (self.chunk_ms / 1000.0)
 
     def render_spectrogram_column(self, spectrum_db, width):
         """Render a spectrogram column with the given spectrum and pixel width.
@@ -289,36 +309,10 @@ class LiveSpectrogram(BaseAudioVisualizer):
         pygame.draw.rect(self.spec_surface, self.BLACK, (self.GUI_WIDTH - width, 0, width, self.GUI_HEIGHT))
         self.spec_surface.blit(column_surface, (self.GUI_WIDTH - width, 0))
 
-    def process_audio_chunk(self, sound):
-        """Process incoming Sound object and render spectrogram using pre-computed spectrum.
-
-        Uses the raw magnitude spectrum (in dB) already calculated in the Sound object's analyze_worker thread.
-        Applies gain, dynamic range clipping, and color normalization here (in render_spectrogram_column)
-        where these parameters can be adjusted in real-time by user keyboard input.
-        
-        Args:
-            sound: Sound object with pre-computed spectrum attributes
-        """
-        if sound is None:
-            return
-
-        # Extract pre-computed spectrum dB values from Sound object
-        magnitude_db = sound.spectrum_magnitude_db
-        
-        # Render using the standard column width
-        self.render_spectrogram_column(magnitude_db, self.column_width)
-
-        # Store raw audio for export if recording is enabled
-        if self.recording and sound.samples is not None:
-            try:
-                # Convert float32 samples back to int16 for WAV export
-                if sound.samples.dtype == np.float32:
-                    int16_samples = (sound.samples * 32768.0).astype(np.int16)
-                else:
-                    int16_samples = sound.samples.astype(np.int16)
-                self.audio_buffer.extend(int16_samples.tolist())
-            except Exception:
-                pass
+        # Also scroll and update rolling dB buffer for Shift+Click inspection
+        if hasattr(self, 'spec_db_buffer') and self.spec_db_buffer is not None:
+            self.spec_db_buffer = np.roll(self.spec_db_buffer, -width, axis=0)
+            self.spec_db_buffer[-width:, :] = spectrum_db
 
     def draw_frequency_grid(self):
         """Draw frequency grid lines and labels for spectrogram axes.
@@ -355,7 +349,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
         # Calculate appropriate time interval to always show 4-5 grid lines
         # Target: 4-5 lines, so interval = display_seconds / 4.5
         target_lines = 4.5
-        raw_interval = self.display_seconds / target_lines
+        raw_interval = self.visible_seconds / target_lines
         
         # Round to nice numbers: 0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, etc.
         nice_intervals = [0.1, 0.2, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0]
@@ -364,10 +358,10 @@ class LiveSpectrogram(BaseAudioVisualizer):
         
         # Draw vertical grid lines at calculated intervals
         current = interval
-        while current < self.display_seconds:
+        while current < self.visible_seconds:
             # Calculate x-pixel position: map time to GUI width
-            # Time 0s → left edge; display_seconds → right edge
-            x_pos = int((current / self.display_seconds) * self.GUI_WIDTH)
+            # Time 0s → left edge; visible_seconds → right edge
+            x_pos = int((current / self.visible_seconds) * self.GUI_WIDTH)
             # Draw vertical line from top to bottom in dim gray
             pygame.draw.line(self.screen, (100, 100, 100), (x_pos, 0), (x_pos, self.GUI_HEIGHT), 1)
             
@@ -392,7 +386,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
         """
         # Create semi-transparent overlay background
         overlay_width = 500
-        overlay_height = 350
+        overlay_height = 380
         overlay_x = (self.GUI_WIDTH - overlay_width) // 2
         overlay_y = (self.GUI_HEIGHT - overlay_height) // 2
         
@@ -417,6 +411,9 @@ class LiveSpectrogram(BaseAudioVisualizer):
         help_lines = [
             ('Ctrl/Cmd+?', 'Toggle this help overlay'),
             ('Ctrl/Cmd+P', 'Toggle performance overlay'),
+            ('Ctrl/Cmd+G', 'Toggle frequency / time grid'),
+            ('Space', 'Start / Stop recording (live / freeze)'),
+            ('Shift + Click', 'Probe Time, Frequency & Power (while paused)'),
             ('ESC', 'Quit application'),
             ('', ''),  # Blank line for spacing
             ('+  / -', 'Decrease / Increase dynamic range'),
@@ -452,7 +449,7 @@ class LiveSpectrogram(BaseAudioVisualizer):
         # Blit overlay to main screen
         self.screen.blit(overlay_surface, (overlay_x, overlay_y))
 
-    def handle_events(self):
+    def main_events(self):
         """Handle pygame events including user keyboard input and window resize.
         
         Processes quit signals, dynamic range adjustment (+/- keys),
@@ -482,14 +479,21 @@ class LiveSpectrogram(BaseAudioVisualizer):
                     # Scale old surface to new size
                     scaled = pygame.transform.scale(old_surface, (self.GUI_WIDTH, self.GUI_HEIGHT))
                     self.spec_surface.blit(scaled, (0, 0))
+                # Recreate/resample spec_db_buffer for new width
+                num_bins = self.nfft // 2 + 1
+                old_db_buf = getattr(self, 'spec_db_buffer', None)
+                self.spec_db_buffer = np.full((self.GUI_WIDTH, num_bins), -120.0, dtype=np.float32)
+                if old_db_buf is not None and old_db_buf.shape[0] > 0:
+                    indices = np.linspace(0, old_db_buf.shape[0] - 1, self.GUI_WIDTH).astype(int)
+                    self.spec_db_buffer = old_db_buf[indices, :]
                 # Recalculate pixels per second for new width
                 self.pixels_per_second = self.GUI_WIDTH / self.display_seconds
                 # Recalculate column width for new dimensions using the actual chunk duration
                 time_per_column = self.chunk_ms / 1000.0
                 self.column_width = int(round(self.pixels_per_second * time_per_column))
                 self.column_width = max(self.column_width, 1)
+                self._update_visible_seconds()
                 # Recalculate pre-calculated y_indices for the new height
-                num_bins = self.nfft // 2 + 1
                 self.y_indices = (np.arange(self.GUI_HEIGHT) / self.GUI_HEIGHT * num_bins).astype(np.int32)
         
         # DYNAMIC RANGE ADJUSTMENT WITH +/- KEYS
@@ -520,26 +524,41 @@ class LiveSpectrogram(BaseAudioVisualizer):
             # Log the new gain setting to console for user feedback
             logger.info(f"Gain: {self.gain_db} dB")
 
-    def export_recording(self):
-        """Export recorded audio to WAV file.
-        
-        Writes buffered audio samples to timestamped WAV file
-        in the recordings directory via the exporter module.
-        """
-        # Only export if audio was actually recorded (buffer is non-empty)
-        if self.audio_buffer:
-            # Convert Python list to NumPy array with int16 dtype (CD quality)
-            audio_array = np.array(self.audio_buffer, dtype=np.int16)
-            output_dir = config.EXPORT_CONFIG.get('output_dir', 'recordings')
-            wav_file = os.path.join(output_dir, f"{self.session_name}_spectrogram.wav")
-            # Call exporter to write WAV file
-            exporter.save_wav(
-                wav_file,
-                audio_array,
-                self.audio_config['sample_rate']
-            )
-            # Log file save location for user reference
-            logger.info(f"Exported audio to {wav_file}")
+        # Space: freeze (pause recording) / resume live display and recording
+        self.handle_space_toggle(self.event_holder)
+
+        # Shift + click inspection probe (only when the display is frozen)
+        self.update_inspect_probe(self.event_holder)
+
+    def process_audio(self):
+        """Draw a spectrogram column for each analyzed sound waiting in the queue. While frozen,
+        discard them instead so no backlog builds up."""
+        for sound in self.take_analyzed_sounds():
+            if not self.paused and sound.spectrum_magnitude_db is not None:
+                self.render_spectrogram_column(sound.spectrum_magnitude_db, self.column_width)
+
+        # The audio device dropped out: the recording ended there, so export it and pause
+        if self.recording and self.check_recording_interrupted() is not None:
+            self._pause_recording()
+
+    def inspect_lines(self, x, y):
+        """Inspection card: time, frequency, and power at the probe (the display is frozen)."""
+        ix = max(0, min(self.GUI_WIDTH - 1, int(x)))
+        iy = max(0, min(self.GUI_HEIGHT - 1, int(y)))
+        freq = max(0.0, min(self.max_freq, (1.0 - iy / float(self.GUI_HEIGHT)) * self.max_freq))
+        t_val = (ix / float(self.GUI_WIDTH)) * self.visible_seconds
+        lines = [
+            ("Time", f"{t_val:.2f} s", (255, 255, 255)),
+            ("Frequency", f"{int(round(freq))} Hz", (0, 220, 255)),
+        ]
+        if getattr(self, 'spec_db_buffer', None) is not None:
+            num_bins = self.spec_db_buffer.shape[1]
+            freq_ratio = max(0.0, min(1.0, 1.0 - (iy / float(self.GUI_HEIGHT))))
+            bin_idx = max(0, min(num_bins - 1, int(round(freq_ratio * (num_bins - 1)))))
+            raw_db = float(self.spec_db_buffer[ix, bin_idx])
+            if raw_db > -200.0:
+                lines.append(("Power", f"{raw_db + self.gain_db:.1f} dB", (100, 255, 120)))
+        return lines
 
     def draw_dynamic_range_indicator(self):
         """Draw the dynamic range indicator in the top-left corner if not at default value.
@@ -572,132 +591,70 @@ class LiveSpectrogram(BaseAudioVisualizer):
             pygame.draw.rect(self.screen, (100, 100, 100), bg_rect, 1)
             self.screen.blit(gain_text, (10, y_pos))
 
-    def draw_mode_status(self):
-        """Draw top-left status text for mode behavior clarity."""
-        font = self.font_20
-        mode_text = "Mode: LiveSpectrogram (recording off)" if not self.recording else "Mode: LiveSpectrogram (recording on)"
-        text_surface = font.render(mode_text, True, (255, 255, 255))
-        text_rect = text_surface.get_rect(topright=(self.GUI_WIDTH - 10, 10))
-        bg_rect = text_rect.inflate(10, 6)
-        pygame.draw.rect(self.screen, (0, 0, 0), bg_rect)
-        pygame.draw.rect(self.screen, (100, 100, 100), bg_rect, 1)
-        self.screen.blit(text_surface, text_rect)
-            
-
     def run(self):
         """Main event loop for real-time spectrogram rendering.
         
         This 60 fps loop continuously:
-        1. Drains audio chunks from the processor queue
-        2. Processes each chunk through FFT analysis and rendering
-        3. Handles user keyboard input
-        4. Draws spectrogram, grids, and status indicators
-        5. Updates the pygame display
+        1. Handles user keyboard and mouse input
+        2. Draws a spectrogram column for each analyzed sound in the queue
+        3. Draws the spectrogram, grids, indicators, and overlays
+        4. Updates the pygame display
         
         The loop runs until user presses ESC/closes window.
         """
-        # Use parent class clock for frame rate limiting and performance monitoring
-        clock = self.clock
-
-        # MAIN LOOP: Continues until keep_running flag is set False
         try:
             while self.keep_running:
                 # Limit frame rate to configured FPS for consistent CPU usage and smooth display
-                clock.tick(self.fps)
+                self.clock.tick(self.fps)
 
                 # Get and parse events first to keep the window responsive under load.
                 self.events = pygame.event.get()
                 self.event_holder = EventHolder(self.events)
-                self.handle_events()
+                self.main_events()
                 if not self.keep_running:
                     break
-                
-                # PROCESS AUDIO CHUNKS FROM QUEUE
-                # Drain the queue of all available sounds to keep the display up-to-date.
-                # This is non-blocking and ensures the display is as smooth as possible.
-                max_sounds_per_frame = 20  # Limit to prevent stalling the app
-                sounds_processed_this_frame = 0
-                for _ in range(max_sounds_per_frame):
-                    try:
-                        # Use get_nowait() for a non-blocking call.
-                        # This raises queue.Empty if the queue is empty.
-                        sound = self.audio_processor.analyzed_sounds_queue.get_nowait()
 
-                        if sound and sound.spectrum_magnitude_db is not None:
-                            self.render_spectrogram_column(sound.spectrum_magnitude_db, self.column_width)
+                # Add a spectrogram column for every analyzed sound waiting in the queue
+                self.process_audio()
 
-                            # Store raw audio for export if recording is enabled
-                            if self.recording and sound.samples is not None:
-                                try:
-                                    if sound.samples.dtype == np.float32:
-                                        int16_samples = (sound.samples * 32768.0).astype(np.int16)
-                                    else:
-                                        int16_samples = sound.samples.astype(np.int16)
-                                    self.audio_buffer.extend(int16_samples.tolist())
-                                except Exception:
-                                    pass
-                            sounds_processed_this_frame += 1
-                    except queue.Empty:
-                        # The queue is empty, so we're done processing for this frame.
-                        break
-                
-                self.current_batch_size = sounds_processed_this_frame
-                
-                # CLEAR DISPLAY
-                # Fill entire screen with black to prevent ghosting artifacts
+                # Draw the frame: spectrogram, grids, indicators, then overlays
                 self.screen.fill(self.BLACK)
-                
-                # DRAW SPECTROGRAM
-                # Blit the scrolling spectrogram surface (spec_surface) to the pygame screen
-                # This displays the time-domain frequency content with proper colors
                 self.screen.blit(self.spec_surface, (0, 0))
-                
-                # DRAW REFERENCE GRIDS
-                # Draw horizontal lines at 1kHz intervals with frequency labels
-                self.draw_frequency_grid()
-                # Draw vertical lines at 1-second intervals for time reference
-                self.draw_time_grid()
-                
-                # Draw dynamic range and gain indicators briefly upon change
+                if self.show_grid:  # Ctrl/Cmd+G
+                    self.draw_frequency_grid()
+                    self.draw_time_grid()
                 self.draw_dynamic_range_indicator()
                 self.draw_gain_indicator()
-                self.draw_mode_status()
-                
-                # DRAW HELP OVERLAY (if toggled on with Ctrl/Cmd+?)
+                self.draw_status_indicators()
+                self.draw_inspect_overlay()
                 if self.show_help:
                     self.draw_help_overlay()
-                
                 self.draw_performance_overlay()
-                
-                # UPDATE DISPLAY
-                # Flip pygame double buffer to show rendered frame on screen
+                self.draw_notification()
+
                 pygame.display.flip()
         finally:
-            # CLEANUP AFTER MAIN LOOP EXITS
-            try:
-                from . import settings_manager
-                mgr = settings_manager.get_settings_manager()
-                saved = mgr.get('spectrogram', {})
-                saved['gain_db'] = self.gain_db
-                saved['gui_width'] = self.screen.get_width()
-                saved['gui_height'] = self.screen.get_height()
-                mgr.set('spectrogram', saved)
-                mgr.save()
-                logger.info("LiveSpectrogram settings saved successfully")
-            except Exception as save_err:
-                logger.error(f"Error saving LiveSpectrogram settings: {save_err}")
+            self.shutdown()
 
-            if self.audio_processor:
-                self.audio_processor.stop()
-            pygame.quit()
+    def shutdown(self):
+        """Export the recorded audio, save the display settings, and close the window."""
+        try:
+            if self.recording:
+                self._collect_recording()
+            if self.original_audio_buffer or self.downsampled_audio_buffer:
+                self.export_recording()
+            from . import settings_manager
+            mgr = settings_manager.get_settings_manager()
+            saved = mgr.get('spectrogram', {})
+            saved['gain_db'] = self.gain_db
+            saved['gui_width'] = self.screen.get_width()
+            saved['gui_height'] = self.screen.get_height()
+            mgr.set('spectrogram', saved)
+            mgr.save()
+            logger.info("LiveSpectrogram settings saved successfully")
+        except Exception as save_err:
+            logger.error(f"Error saving LiveSpectrogram settings: {save_err}")
 
-    def quit(self):
-        """Request application exit by setting keep_running flag.
-        
-        This signals the main loop to stop, allowing graceful shutdown
-        of audio processing and pygame resources.
-        """
-        # Log quit request for debugging/user tracking
-        logger.info("Quit requested")
-        # Set flag to break main event loop (checked in run() while condition)
-        self.keep_running = False
+        if self.audio_processor:
+            self.audio_processor.stop()
+        pygame.quit()

@@ -1,13 +1,15 @@
 """
 Formant estimation utilities for speech/audio analysis.
 
-This module provides a fast, dependency-light method for estimating the first three
-formant frequencies (F1, F2, F3) from an audio signal, using a native LPC-based approach.
+This module estimates the first three formant frequencies (F1, F2, F3) from an audio signal
+with the built-in LPC and WLP methods, Praat (through Parselmouth), or a user-written method.
+The main entry point is `get_formants`.
 """
 
 from typing import Dict
 import numpy as np
 import logging
+from .. import config
 
 # Optional Parselmouth import - keep it local to this module so callers don't need it
 try:
@@ -20,24 +22,51 @@ except Exception:
 logger = logging.getLogger(__name__)
 
 
-def get_formants(signal, sample_rate, method='native', **kwargs):
+def get_formants(signal, sample_rate, method='lpc', **kwargs):
     """
     High-level dispatcher for formant extraction.
     """
-    if method == 'native':
+    method = config.current_method_name('formant_method', method)
+    if method != 'parselmouth':
+        # Only the Parselmouth backend uses these: the LPC methods always return their LPC
+        # polynomial, and there is no Praat Sound to reuse
         kwargs.pop('parselmouth_sound', None)
-        return get_formants_native(signal, sample_rate, **kwargs)
+        kwargs.pop('return_lpc', None)
+    if method == 'lpc':
+        return get_formants_lpc(signal, sample_rate, **kwargs)
     elif method == 'wlp':
-        kwargs.pop('parselmouth_sound', None)
         return get_formants_wlp(signal, sample_rate, **kwargs)
     elif method == 'parselmouth':
         return get_formants_parselmouth(signal, sample_rate, **kwargs)
     elif method == 'custom':
-        kwargs.pop('parselmouth_sound', None)
         return get_formants_custom(signal, sample_rate, **kwargs)
     else:
         raise ValueError(f"Unknown method: {method}")
     
+
+def _resample_for_max_formant(sig: np.ndarray, sample_rate: float, max_formant: float) -> tuple:
+    """
+    Resample a signal to 2 x max_formant, as Praat does before formant analysis, so that the
+    LPC models only the 0..max_formant band. Only downsampling is done (content above the
+    input Nyquist frequency cannot be recovered). Uses FFT truncation, which low-pass filters
+    and resamples in one step; this is cheap for a single short analysis window.
+
+    Returns
+    -------
+    tuple
+        (resampled signal, its exact sample rate). Unchanged if already at or below the target.
+    """
+    target_rate = 2.0 * float(max_formant)
+    if sample_rate <= target_rate * 1.001 or sig.size < 2:
+        return sig, sample_rate
+    n_out = int(round(sig.size * target_rate / sample_rate))
+    if n_out < 20:
+        return sig, sample_rate
+    spectrum = np.fft.rfft(sig)
+    resampled = np.fft.irfft(spectrum[:n_out // 2 + 1], n_out) * (n_out / sig.size)
+    # Exact rate after rounding the sample count
+    return resampled, sample_rate * n_out / sig.size
+
 
 def _levinson_durbin(r: np.ndarray, order: int) -> tuple:
     """
@@ -63,7 +92,7 @@ def _levinson_durbin(r: np.ndarray, order: int) -> tuple:
     return a, e
 
 
-def get_formants_native(signal: np.ndarray,
+def get_formants_lpc(signal: np.ndarray,
                   sample_rate: int,
                   max_formant: int = 5000,
                   n_formants_praat: float = 5.5,
@@ -73,7 +102,7 @@ def get_formants_native(signal: np.ndarray,
                   pre_emphasis_hz: float = 50.0) -> Dict:
     """
     Estimate the first three formant frequencies (F1, F2, F3) from an audio signal
-    using a native LPC-based approach.
+    using a built-in LPC-based approach.
 
     Parameters
     ----------
@@ -85,15 +114,15 @@ def get_formants_native(signal: np.ndarray,
         Maximum frequency (Hz) to consider for formant search (default: 5000).
     n_formants_praat : float, optional
         Number of formants to search for in LPC analysis (default: 5.5).
-        This corresponds to `2 * order` for the LPC analysis.
+        The LPC order is 2 x this value, rounded down (5.5 -> order 11).
     robust : bool, optional
-        Ignored for native method. For API compatibility only (default: False).
+        Ignored for the LPC method. For API compatibility only (default: False).
     window_length : float, optional
-        Ignored for native method. For API compatibility only (default: 0.05).
+        Ignored for the LPC method. For API compatibility only (default: 0.05).
     time_step : float, optional
-        Ignored for native method. For API compatibility only (default: 0.01).
+        Ignored for the LPC method. For API compatibility only (default: 0.01).
     pre_emphasis_hz : float, optional
-        Ignored for native method. For API compatibility only (default: 50.0).
+        Ignored for the LPC method. For API compatibility only (default: 50.0).
 
     Returns
     -------
@@ -101,12 +130,12 @@ def get_formants_native(signal: np.ndarray,
         Dictionary with keys:
         - 'formants': np.ndarray of estimated formant frequencies (Hz, shape (3,))
         - 'bandwidths': np.ndarray of estimated formant bandwidths (Hz, shape (3,))
-        - 'method': str indicating which method was used ('native')
+        - 'method': str indicating which method was used ('lpc')
     """
 
     # Handle empty or invalid input signal
     if signal is None or signal.size == 0:
-        return {'formants': np.zeros(3), 'bandwidths': np.zeros(3), 'method': 'native'}
+        return {'formants': np.zeros(3), 'bandwidths': np.zeros(3), 'method': 'lpc', 'lpc_a': None, 'lpc_e': 0.0, 'lpc_order': 0}
 
     # Normalize signal to float64 in range [-1, 1] for all methods
     if signal.dtype == np.int16:
@@ -115,11 +144,12 @@ def get_formants_native(signal: np.ndarray,
         sig = signal.astype(np.float64)
 
     # Validate max_formant against Nyquist frequency (sample_rate / 2)
-    # Clamp max_formant to Nyquist if needed
     nyquist = sample_rate / 2.0
     if max_formant > nyquist:
-        logger.warning(f"max_formant ({max_formant} Hz) exceeds Nyquist frequency ({nyquist} Hz). Clamping to Nyquist.")
         max_formant = int(nyquist)
+
+    # Analyze the 0..max_formant band only, at 2 x max_formant (no-op if already at that rate)
+    sig, sample_rate = _resample_for_max_formant(sig, sample_rate, max_formant)
 
     # === Native LPC-based formant estimation ===
     # Apply pre-emphasis filter to boost high frequencies (improves formant detection)
@@ -128,7 +158,7 @@ def get_formants_native(signal: np.ndarray,
         sig = np.append(sig[0], sig[1:] - pre_emph * sig[:-1])
 
     if len(sig) < 20:
-        return {'formants': np.zeros(3), 'bandwidths': np.zeros(3), 'method': 'native'}
+        return {'formants': np.zeros(3), 'bandwidths': np.zeros(3), 'method': 'lpc', 'lpc_a': None, 'lpc_e': 0.0, 'lpc_order': 0}
 
     # Trying to copy Praat's Gaussian Window. Praat defines the physical window (N)
     # as exactly twice the effective window length (T)
@@ -151,47 +181,50 @@ def get_formants_native(signal: np.ndarray,
 
     # Check if we have enough autocorrelation values for the requested order
     if autocorr.size < order + 1:
-        return {'formants': np.zeros(3), 'bandwidths': np.zeros(3), 'method': 'native'}
+        return {'formants': np.zeros(3), 'bandwidths': np.zeros(3), 'method': 'lpc', 'lpc_a': None, 'lpc_e': 0.0, 'lpc_order': 0}
 
     # Solve for LPC coefficients using Levinson-Durbin algorithm
     a, e = _levinson_durbin(autocorr, order)
 
-    # Find roots of LPC polynomial (poles of vocal tract filter)
-    roots = np.roots(a)
-    # Keep only roots with positive imaginary part (upper half of z-plane)
+    result = _formants_from_polynomial(a, sample_rate, max_formant)
+    result.update({'method': 'lpc', 'lpc_a': a, 'lpc_e': e, 'lpc_order': order, 'lpc_sample_rate': sample_rate})
+    return result
+
+
+# Poles wider than this are not counted as formants. Earlier versions computed bandwidths at a
+# quarter of their true value and applied a 400 Hz limit, which is a true limit of 1600 Hz; this
+# keeps that behaviour (Praat applies no bandwidth limit at all).
+MAX_FORMANT_BANDWIDTH = 1600.0
+
+
+def _formants_from_polynomial(poly, sample_rate, max_formant):
+    """
+    Convert a prediction polynomial [1, a1, ..., ap] to formants: each complex pole pair in
+    the upper half plane gives a frequency and a bandwidth. Poles outside the unit circle
+    (possible for WLP, never for Levinson-Durbin LPC) are reflected inside it first, which
+    keeps their frequency. Returns the three lowest plausible formants.
+    """
+    roots = np.roots(poly)
+    outside = np.abs(roots) > 1.0
+    roots[outside] = 1.0 / np.conj(roots[outside])
     roots = roots[np.imag(roots) > 0]
 
-    # Convert complex roots to formant frequencies and bandwidths
-    formant_freqs = []
-    bandwidths = []
-    for r in roots:
-        ang = np.arctan2(np.imag(r), np.real(r))
-        freq = ang * sample_rate / (2.0 * np.pi)
-        bw = -0.5 * (sample_rate / (2.0 * np.pi)) * np.log(np.abs(r))
-        # Only keep plausible formants
-        if freq > 50 and freq <= max_formant and bw > 0 and bw < 400:
-            formant_freqs.append(freq)
-            bandwidths.append(bw)
+    freqs = np.arctan2(np.imag(roots), np.real(roots)) * sample_rate / (2.0 * np.pi)
+    bandwidths = -(sample_rate / np.pi) * np.log(np.abs(roots))
+    keep = (freqs > 50) & (freqs <= max_formant) & (bandwidths > 0) & (bandwidths < MAX_FORMANT_BANDWIDTH)
+    order = np.argsort(freqs[keep])
+    freqs, bandwidths = freqs[keep][order], bandwidths[keep][order]
 
-    if len(formant_freqs) == 0:
-        return {'formants': np.zeros(3), 'bandwidths': np.zeros(3), 'method': 'native'}
-
-    # Sort and return lowest 3 formants
-    idx = np.argsort(formant_freqs)
-    formant_freqs = np.array(formant_freqs)[idx]
-    bandwidths = np.array(bandwidths)[idx]
     out_formants = np.zeros(3)
     out_bandwidths = np.zeros(3)
-    take = min(3, len(formant_freqs))
-    out_formants[:take] = formant_freqs[:take]
+    take = min(3, freqs.size)
+    out_formants[:take] = freqs[:take]
     out_bandwidths[:take] = bandwidths[:take]
-    return {'formants': out_formants, 'bandwidths': out_bandwidths, 'method': 'native'}
+    return {'formants': out_formants, 'bandwidths': out_bandwidths, 'all_formants': freqs}
 
 
 
-"""
-Formant estimation utilities for speech/audio analysis using Parselmouth.
-"""
+# Formant estimation with Praat (through Parselmouth)
 
 def get_formants_parselmouth(signal: np.ndarray,
                   sample_rate: int,
@@ -201,7 +234,8 @@ def get_formants_parselmouth(signal: np.ndarray,
                   time_step: float = 0.01,
                   pre_emphasis_hz: float = 50.0,
                   n_formants_praat: float = 5.5,
-                  parselmouth_sound=None) -> Dict:
+                  parselmouth_sound=None,
+                  return_lpc: bool = False) -> Dict:
     """
     Estimate the first three formant frequencies (F1, F2, F3) from an audio signal
     using Parselmouth/Praat.
@@ -214,10 +248,6 @@ def get_formants_parselmouth(signal: np.ndarray,
         The sampling rate of the signal in Hz.
     max_formant : int, optional
         Maximum frequency (Hz) to consider for formant search (default: 5000).
-    method : str or callable, optional
-        This parameter is ignored. Kept for API compatibility.
-    custom_func : callable, optional
-        This parameter is ignored. Kept for API compatibility.
     robust : bool, optional
         Use robust formant estimation in Parselmouth (default: False).
     window_length : float, optional
@@ -230,6 +260,12 @@ def get_formants_parselmouth(signal: np.ndarray,
         Number of formants to search for in Parselmouth (default: 5.5).
     parselmouth_sound : parselmouth.Sound, optional
         Pre-allocated Parselmouth Sound object to reuse.
+    return_lpc : bool, optional
+        Also return Praat's LPC polynomial for the frame (for the LPC envelope in LiveSpectrum).
+        Computed as Praat's "To Formant (burg)" does it: resampled to 2 x max_formant, Burg LPC of
+        order 2 x n_formants_praat with the same window, time step and pre-emphasis, so its roots
+        closely match the formants returned (it is a separate analysis, so they are not identical,
+        especially for the highest formants). Off by default, since it costs a second analysis.
 
     Returns
     -------
@@ -237,7 +273,10 @@ def get_formants_parselmouth(signal: np.ndarray,
         Dictionary with keys:
         - 'formants': np.ndarray of estimated formant frequencies (Hz, shape (3,))
         - 'bandwidths': np.ndarray of estimated formant bandwidths (Hz, shape (3,))
+        - 'all_formants': np.ndarray of all formants Praat found in the frame (Hz)
         - 'method': str, always 'parselmouth'.
+        - with return_lpc: 'lpc_a', 'lpc_e', 'lpc_order', 'lpc_sample_rate' (as for the LPC method;
+          'lpc_e' is 1.0, since the envelope is aligned to the spectrum for display anyway)
     """
 
     # Handle empty or invalid input signal
@@ -255,10 +294,8 @@ def get_formants_parselmouth(signal: np.ndarray,
         sig = signal.astype(np.float64)
 
     # Validate max_formant against Nyquist frequency (sample_rate / 2)
-    # Clamp max_formant to Nyquist if needed
     nyquist = sample_rate / 2.0
     if max_formant > nyquist:
-        logger.warning(f"max_formant ({max_formant} Hz) exceeds Nyquist frequency ({nyquist} Hz). Clamping to Nyquist.")
         max_formant = int(nyquist)
 
     # Use Parselmouth/Praat for formant tracking
@@ -272,7 +309,8 @@ def get_formants_parselmouth(signal: np.ndarray,
             formant_obj = parselmouth.praat.call(
                 snd, 'To Formant (burg)', time_step, praat_n_formants, max_formant, window_length, pre_emphasis_hz)
         n_frames = formant_obj.get_number_of_frames()
-        t = formant_obj.get_time_from_frame_number(n_frames if n_frames > 0 else 1)
+        frame = n_frames if n_frames > 0 else 1
+        t = formant_obj.get_time_from_frame_number(frame)
         fvals = np.zeros(3)
         bws = np.zeros(3)
         for i in range(1, 4):
@@ -281,7 +319,32 @@ def get_formants_parselmouth(signal: np.ndarray,
                 fvals[i - 1] = float(val) if val is not None else 0.0
             except Exception:
                 fvals[i - 1] = 0.0
-        return {'formants': fvals, 'bandwidths': bws, 'method': 'parselmouth'}
+        result = {'formants': fvals, 'bandwidths': bws, 'method': 'parselmouth'}
+
+        # All formants Praat found in the frame (F4, F5, ... for the LiveSpectrum markers)
+        try:
+            n_found = int(parselmouth.praat.call(formant_obj, 'Get number of formants', frame))
+            all_f = [parselmouth.praat.call(formant_obj, 'Get value at time', i, t, 'Hertz', 'Linear')
+                     for i in range(1, n_found + 1)]
+            result['all_formants'] = np.array([f for f in all_f if f is not None and not np.isnan(f)])
+        except Exception:
+            pass
+
+        if return_lpc:
+            try:
+                order = int(2 * n_formants_praat)
+                lpc_rate = 2.0 * max_formant
+                lpc_snd = snd if abs(snd.sampling_frequency - lpc_rate) < 1e-6 else \
+                    parselmouth.praat.call(snd, 'Resample', lpc_rate, 50)
+                lpc_obj = parselmouth.praat.call(lpc_snd, 'To LPC (burg)', order, window_length, time_step, pre_emphasis_hz)
+                coefs = parselmouth.praat.call(lpc_obj, 'Down to Matrix (lpc)').values
+                if coefs.size:
+                    # Same frame as the formants (the last one); polynomial [1, a1, ..., ap]
+                    result.update({'lpc_a': np.concatenate([[1.0], coefs[:, -1]]), 'lpc_e': 1.0,
+                                   'lpc_order': order, 'lpc_sample_rate': lpc_rate})
+            except Exception as e:
+                logger.debug(f"Parselmouth LPC extraction failed: {e}")
+        return result
     except Exception as e:
         logger.warning(f"Parselmouth formant extraction failed: {e}.")
         return {'formants': np.zeros(3), 'bandwidths': np.zeros(3), 'method': 'parselmouth'}
@@ -290,10 +353,7 @@ def get_formants_parselmouth(signal: np.ndarray,
 
 
 
-"""
-Your own formant estimation utilities for speech/audio analysis.
-
-"""
+# Your own formant estimation method
 
 def get_formants_custom(signal: np.ndarray,
                   sample_rate: int,
@@ -317,7 +377,7 @@ def get_formants_custom(signal: np.ndarray,
         Maximum frequency (Hz) to consider for formant search (default: 5000).
     n_formants_praat : float, optional
         Number of formants to search for in LPC analysis (default: 5.5).
-        This corresponds to `2 * order` for the LPC analysis.
+        The LPC order is 2 x this value, rounded down (5.5 -> order 11).
     robust : bool, optional
         Use robust formant estimation if applicable (default: False).
     window_length : float, optional
@@ -334,10 +394,33 @@ def get_formants_custom(signal: np.ndarray,
         - 'formants': np.ndarray of estimated formant frequencies (Hz, shape (3,))
         - 'bandwidths': np.ndarray of estimated formant bandwidths (Hz, shape (3,))
         - 'method': str indicating which method was used ('custom')
+
+        Optional, for the overlay in LiveSpectrum (Ctrl/Cmd+L):
+        - 'all_formants': np.ndarray of every formant found (Hz), for the F4 and F5 markers
+        - 'lpc_a': prediction polynomial [1, a1, ..., ap]; the envelope drawn is 1 / |A(f)|
+        - 'lpc_e': gain of the envelope (any positive number, e.g. 1.0: the curve is aligned to
+          the spectrum for display)
+        - 'lpc_sample_rate': sample rate (Hz) the polynomial applies to (default: sample_rate)
+        Without 'lpc_a' and 'lpc_e' the overlay draws nothing for this method.
     """
 
-    # YOUR METHOD IMPLEMENTATION HERE 
+    # YOUR METHOD IMPLEMENTATION HERE
+    if not get_formants_custom._warned:
+        logger.warning(
+            "formant_method='custom' is selected but get_formants_custom() is an unimplemented "
+            "placeholder - it always returns zeros. Implement it in utils/get_formants.py, or "
+            "switch to 'lpc', 'wlp', or 'parselmouth' in Analysis Settings."
+        )
+        get_formants_custom._warned = True
     return {'formants': np.zeros(3), 'bandwidths': np.zeros(3), 'method': 'custom'}
+
+
+get_formants_custom._warned = False
+
+
+# Length of the short-time energy window for WLP weighting (the energy of this much signal just
+# before each sample is that sample's weight)
+STE_WINDOW_MS = 2.0
 
 
 def get_formants_wlp(signal: np.ndarray,
@@ -350,7 +433,21 @@ def get_formants_wlp(signal: np.ndarray,
                      pre_emphasis_hz: float = 50.0) -> Dict:
     """
     Estimate the first three formant frequencies (F1, F2, F3) from an audio signal
-    using Weighted Linear Prediction (WLP) with Short-Time Energy (STE) weighting.
+    using Weighted Linear Prediction (WLP) with Short-Time Energy (STE) weighting
+    (Ma, Kamp & Willems 1993; applied to high-pitched vowels by Alku et al. 2013).
+
+    Standard LPC weights the prediction error equally at every sample. WLP weights it by the
+    energy of the STE_WINDOW_MS of signal preceding each sample. No glottal events are detected:
+    a glottal excitation follows the decayed end of the previous cycle, so it (the least
+    predictable part of the signal) gets a small weight, while the high-energy stretch after it,
+    when the vocal tract rings freely, gets large weights. This makes it less prone than LPC to
+    locking onto harmonics in high-pitched voices. Without a clear excitation-then-decay pattern
+    the weights flatten and WLP approaches ordinary linear prediction.
+
+    The frame is resampled to 2 x max_formant, pre-emphasized and Gaussian-windowed exactly
+    as in the LPC method. The weighted normal equations are solved directly; unlike
+    Levinson-Durbin LPC this can give poles outside the unit circle, which are reflected
+    inside (keeping their frequency) rather than dropped.
 
     Parameters
     ----------
@@ -362,7 +459,7 @@ def get_formants_wlp(signal: np.ndarray,
         Maximum frequency (Hz) to consider for formant search (default: 5000).
     n_formants_praat : float, optional
         Number of formants to search for in WLP analysis (default: 5.5).
-        This corresponds to `2 * order` for the WLP analysis.
+        The WLP order is 2 x this value, rounded down (5.5 -> order 11).
     robust : bool, optional
         Ignored for WLP method. For API compatibility only (default: False).
     window_length : float, optional
@@ -378,11 +475,16 @@ def get_formants_wlp(signal: np.ndarray,
         Dictionary with keys:
         - 'formants': np.ndarray of estimated formant frequencies (Hz, shape (3,))
         - 'bandwidths': np.ndarray of estimated formant bandwidths (Hz, shape (3,))
+        - 'all_formants': np.ndarray of all plausible formant frequencies (Hz)
         - 'method': str indicating WLP method was used ('wlp')
+        - 'lpc_a', 'lpc_e', 'lpc_order', 'lpc_sample_rate': prediction polynomial, weighted
+          mean squared residual, order, and the sample rate they apply to
     """
+    empty = {'formants': np.zeros(3), 'bandwidths': np.zeros(3), 'all_formants': np.array([]), 'method': 'wlp',
+             'lpc_a': None, 'lpc_e': 0.0, 'lpc_order': 0}
     # Handle empty or invalid input signal
     if signal is None or signal.size == 0:
-        return {'formants': np.zeros(3), 'bandwidths': np.zeros(3), 'method': 'wlp'}
+        return empty
 
     # Normalize signal to float64 in range [-1, 1]
     if signal.dtype == np.int16:
@@ -395,6 +497,9 @@ def get_formants_wlp(signal: np.ndarray,
     if max_formant > nyquist:
         max_formant = int(nyquist)
 
+    # Analyze the 0..max_formant band only, at 2 x max_formant (no-op if already at that rate)
+    sig, sample_rate = _resample_for_max_formant(sig, sample_rate, max_formant)
+
     # Apply pre-emphasis filter to boost high frequencies
     pre_emph = 0.97
     if sig.size > 1:
@@ -403,91 +508,41 @@ def get_formants_wlp(signal: np.ndarray,
     N = len(sig)
     order = int(2 * n_formants_praat)
     if N < order + 10:
-        return {'formants': np.zeros(3), 'bandwidths': np.zeros(3), 'method': 'wlp'}
+        return empty
 
-    # Apply Gaussian Window to window the pre-emphasized signal
+    # Taper the frame with the same Gaussian window as the LPC method
     n = np.arange(N)
-    center = (N - 1) / 2.0
-    T = N / 2.0
-    gauss = np.exp(-12.0 * ((n - center) / T) ** 2)
-    windowed = sig * gauss
+    x = sig * np.exp(-12.0 * ((n - (N - 1) / 2.0) / (N / 2.0)) ** 2)
 
-    # Calculate Short-Time Energy (STE) weight function
-    # Compute squared samples
-    squared = windowed ** 2
-    # Moving average window of approx 1.5 ms for weight smoothing
-    ste_win_len = max(3, int(round(sample_rate * 0.0015)))
-    if ste_win_len % 2 == 0:
-        ste_win_len += 1
-    ste_window = np.ones(ste_win_len) / ste_win_len
-    # Weights vector
-    ste_weight = np.convolve(squared, ste_window, mode='same')
-    # Prevent zero weight division issues by adding a tiny threshold based on max energy
-    ste_weight = ste_weight + 1e-8 * np.max(ste_weight)
+    # Predict every sample x[n], n = 0..N+order-1, from the `order` samples before it, with the
+    # frame zero-padded on both sides (the autocorrelation-style formulation used by Ma et al.)
+    padded = np.concatenate([np.zeros(order), x, np.zeros(order)])
+    targets = np.arange(N + order) + order          # position of each predicted sample in `padded`
+    Y = np.stack([padded[targets - k] for k in range(1, order + 1)], axis=1)
+    y = padded[targets]
 
-    # Formulate WLP matrix normal equations
-    # We predict windowed[order:] using its lagged elements
-    M = N - order
-    x_target = windowed[order:]
-    Y = np.zeros((M, order))
-    for k in range(order):
-        Y[:, k] = windowed[order - 1 - k : N - 1 - k]
+    # Short-time energy weight: the energy of the STE_WINDOW_MS of signal just before each
+    # predicted sample (Ma, Kamp & Willems 1993). Low at the glottal excitations (after the
+    # previous cycle has decayed), high in the stretch of free resonance that follows them
+    M = max(1, int(round(STE_WINDOW_MS / 1000.0 * sample_rate)))
+    energy = np.concatenate([[0.0], np.cumsum(np.concatenate([np.zeros(M), padded]) ** 2)])
+    w = energy[targets + M] - energy[targets]       # sum of padded[t - M .. t - 1]
+    if w.max() <= 0:
+        return empty
+    w = w + 1e-9 * w.max()                          # keep the normal equations well posed
 
-    # Weights vector at prediction times
-    w = ste_weight[order:]
-
-    # Scale the columns of Y by weight vector w
-    Y_weighted = Y * w[:, np.newaxis]
-
-    # Solve the WLP normal equations: (Y^T * W * Y) a = Y^T * W * x_target
-    C = np.dot(Y.T, Y_weighted)
-    d = np.dot(Y_weighted.T, x_target)
-
+    # Weighted least squares: minimise sum_n w[n] * (y[n] - Y[n] . a)^2
+    Yw = Y * w[:, np.newaxis]
     try:
-        # Solve for WLP predictor coefficients
-        coeffs = np.linalg.solve(C, d)
+        coeffs = np.linalg.solve(Y.T @ Yw, Yw.T @ y)
     except np.linalg.LinAlgError:
-        # Fallback to pseudo-inverse if WLP matrix is singular or ill-conditioned
-        try:
-            coeffs = np.dot(np.linalg.pinv(C), d)
-        except Exception:
-            return {'formants': np.zeros(3), 'bandwidths': np.zeros(3), 'method': 'wlp'}
+        coeffs = np.linalg.lstsq(Y * np.sqrt(w)[:, np.newaxis], y * np.sqrt(w), rcond=None)[0]
 
-    # Construct the polynomial: 1 - sum_{k=1}^order coeffs_k * z^-k
-    poly = np.zeros(order + 1)
-    poly[0] = 1.0
-    poly[1:] = -coeffs
+    # Prediction polynomial A(z) = 1 - sum_k a_k z^-k, and the weighted mean squared residual
+    poly = np.concatenate([[1.0], -coeffs])
+    residual = y - Y @ coeffs
+    lpc_e = float(np.sum(w * residual ** 2) / np.sum(w))
 
-    # Find polynomial roots
-    roots = np.roots(poly)
-    # Filter roots to upper z-plane (imaginary part > 0)
-    roots = roots[np.imag(roots) > 0]
-
-    # Convert complex roots to frequencies and bandwidths
-    formant_freqs = []
-    bandwidths = []
-    for r_val in roots:
-        ang = np.arctan2(np.imag(r_val), np.real(r_val))
-        freq = ang * sample_rate / (2.0 * np.pi)
-        bw = -0.5 * (sample_rate / (2.0 * np.pi)) * np.log(np.abs(r_val))
-        # Keep plausible formant candidates
-        if freq > 50 and freq <= max_formant and bw > 0 and bw < 400:
-            formant_freqs.append(freq)
-            bandwidths.append(bw)
-
-    if len(formant_freqs) == 0:
-        return {'formants': np.zeros(3), 'bandwidths': np.zeros(3), 'method': 'wlp'}
-
-    # Sort formants by frequency and keep the lowest 3
-    idx = np.argsort(formant_freqs)
-    formant_freqs = np.array(formant_freqs)[idx]
-    bandwidths = np.array(bandwidths)[idx]
-    out_formants = np.zeros(3)
-    out_bandwidths = np.zeros(3)
-    take = min(3, len(formant_freqs))
-    out_formants[:take] = formant_freqs[:take]
-    out_bandwidths[:take] = bandwidths[:take]
-
-    return {'formants': out_formants, 'bandwidths': out_bandwidths, 'method': 'wlp'}
-
-   
+    result = _formants_from_polynomial(poly, sample_rate, max_formant)
+    result.update({'method': 'wlp', 'lpc_a': poly, 'lpc_e': lpc_e, 'lpc_order': order, 'lpc_sample_rate': sample_rate})
+    return result

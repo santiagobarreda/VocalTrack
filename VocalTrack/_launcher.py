@@ -24,13 +24,12 @@ from .LiveSpectrogram import LiveSpectrogram
 from .LiveSpectrum import LiveSpectrum
 
 from . import config
-from . import audio_devices
 from . import settings_manager
 
 from .settings_dialogs import (
     AnalysisSettingsDialog, SmootherSettingsDialog, PlottingSettingsDialog,
     PitchPlotSettingsDialog, SpectrogramSettingsDialog, SpectrumSettingsDialog,
-    RecordingSettingsDialog
+    DataSettingsDialog
 )
 from .ipalabels import get_resource_path
 
@@ -78,7 +77,8 @@ class BenchmarkWorker(QObject):
     def run(self):
         try:
             self.status.emit("Starting benchmark...")
-            self.run_fn(self._on_progress, self._on_status)
+            if self.run_fn(self._on_progress, self._on_status) is None:
+                raise RuntimeError("no results were produced. Was any audio recorded? Check the microphone in Data Settings")
             self.status.emit("Benchmark complete!")
             self.progress.emit(100)
             self.finished.emit(True, "Benchmark complete.", self.output_dir)
@@ -105,6 +105,9 @@ class LauncherWindow(QMainWindow):
         self.setMinimumSize(400, 400)
 
         self.audio_input_device = None
+        # Device name is what selects the microphone; the index is only a fallback for settings
+        # saved without a name (positions in the device list change when devices come and go)
+        self.audio_input_device_name = None
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -131,7 +134,7 @@ class LauncherWindow(QMainWindow):
 
         self._add_settings_btn(settings_layout, "Analysis Settings", self.open_analysis_settings, 0, 0)
         self._add_settings_btn(settings_layout, "Smoother Settings", self.open_smoother_settings, 1, 0)
-        self._add_settings_btn(settings_layout, "Recording Settings", self.open_recording_settings, 2, 0)
+        self._add_settings_btn(settings_layout, "Data Settings", self.open_data_settings, 2, 0)
         self._add_settings_btn(settings_layout, "Benchmarking", self.open_benchmark_settings_dialog, 3, 0)
 
         self._add_settings_btn(settings_layout, "Formant Plot Settings", self.open_plotting_settings, 0, 1)
@@ -195,6 +198,15 @@ class LauncherWindow(QMainWindow):
         return btn
 
     def load_saved_settings(self):
+        self._load_categories_from_manager()
+        mgr = settings_manager.get_settings_manager()
+        if saved := mgr.get('recording', {}):
+            self.recording_settings = saved
+            self.audio_input_device = saved.get('input_device_index', None)
+            self.audio_input_device_name = saved.get('device_name') or None
+
+    def _load_categories_from_manager(self):
+        """Copy the saved per-category settings (all except 'recording') into the launcher."""
         mgr = settings_manager.get_settings_manager()
         if saved := mgr.get('analysis', {}): self.analysis_settings = saved
         if saved := mgr.get('smoother', {}): self.smoother_settings = saved
@@ -202,15 +214,14 @@ class LauncherWindow(QMainWindow):
         if saved := mgr.get('pitch_plot', {}): self.pitch_plot_settings = saved
         if saved := mgr.get('spectrogram', {}): self.spectrogram_settings = saved
         if saved := mgr.get('spectrum', {}): self.spectrum_settings = saved
-        if saved := mgr.get('recording', {}): self.recording_settings = saved
 
     def open_analysis_settings(self):
         dialog = AnalysisSettingsDialog(self)
         if dialog.exec() == QDialog.Accepted:
             self.analysis_settings = dialog.get_settings()
-            window_ms = self.analysis_settings['chunk_ms'] * self.analysis_settings['number_of_chunks']
+            window_ms = self.analysis_settings['window_ms']
             if window_ms < 20 or window_ms > 100:
-                QMessageBox.warning(self, "Warning", f"Total analysis window ({window_ms}ms) is suboptimal. Edit code if intentional.")
+                QMessageBox.warning(self, "Warning", f"Analysis window ({window_ms:g} ms) is suboptimal. Edit code if intentional.")
             self.apply_settings()
 
     def open_smoother_settings(self):
@@ -222,33 +233,35 @@ class LauncherWindow(QMainWindow):
     def open_plotting_settings(self):
         dialog = PlottingSettingsDialog(self)
         if dialog.exec() == QDialog.Accepted:
-            self.plotting_settings = dialog.get_settings()
+            self.plotting_settings = {**self.plotting_settings, **dialog.get_settings()}
             self.apply_settings()
 
     def open_pitch_plot_settings(self):
         dialog = PitchPlotSettingsDialog(self)
         if dialog.exec() == QDialog.Accepted:
-            self.pitch_plot_settings = dialog.get_settings()
+            self.pitch_plot_settings = {**self.pitch_plot_settings, **dialog.get_settings()}
             self.apply_settings()
 
     def open_spectrogram_settings(self):
         dialog = SpectrogramSettingsDialog(self)
         if dialog.exec() == QDialog.Accepted:
-            self.spectrogram_settings = dialog.get_settings()
+            self.spectrogram_settings = {**self.spectrogram_settings, **dialog.get_settings()}
             self.apply_settings()
 
     def open_spectrum_settings(self):
         dialog = SpectrumSettingsDialog(self)
         if dialog.exec() == QDialog.Accepted:
-            self.spectrum_settings = dialog.get_settings()
+            self.spectrum_settings = {**self.spectrum_settings, **dialog.get_settings()}
             self.apply_settings()
 
-    def open_recording_settings(self):
-        dialog = RecordingSettingsDialog(self)
+    def open_data_settings(self):
+        dialog = DataSettingsDialog(self)
         if dialog.exec() == QDialog.Accepted:
             self.audio_input_device = dialog.get_device_index()
             self.recording_settings = dialog.get_settings()
+            self.audio_input_device_name = self.recording_settings.get('device_name') or None
             self.apply_settings()
+
 
     def _get_benchmark_output_dir(self):
         base_dir = os.path.join(os.getcwd(), "benchmarking")
@@ -284,23 +297,33 @@ class LauncherWindow(QMainWindow):
         else: QMessageBox.warning(self, "Benchmark Failed", msg)
 
     def open_benchmark_settings_dialog(self):
+        # Use the saved analysis settings (window length, max formant, ...), as launching a module does
+        self.apply_settings()
         dialog = QDialog(self)
         dialog.setWindowTitle("Comprehensive Benchmark")
         layout = QVBoxLayout(dialog)
 
         info_label = QLabel(
             "Records 15 seconds of speech and compares Parselmouth\n"
-            "against your chosen method for both accuracy and timing.\n"
+            "against your chosen methods for both accuracy and timing.\n"
             "Saves audio, raw data CSVs, and comprehensive report."
         )
         layout.addWidget(info_label)
         layout.addSpacing(10)
 
-        method_combo = QComboBox()
-        method_combo.addItems(["native", "custom"])
+        # One dropdown per analysis, preselecting the methods chosen in Analysis Settings
+        formant_combo = QComboBox()
+        formant_combo.addItems(["lpc", "wlp", "custom"])
+        pitch_combo = QComboBox()
+        pitch_combo.addItems(["autocorrelation", "yin", "custom"])
+        for combo, setting in ((formant_combo, 'formant_method'), (pitch_combo, 'pitch_method')):
+            idx = combo.findText(config.ANALYSIS_CONFIG.get(setting, ''))
+            if idx >= 0: combo.setCurrentIndex(idx)
 
-        layout.addWidget(QLabel("Compare Parselmouth against:"))
-        layout.addWidget(method_combo)
+        layout.addWidget(QLabel("Compare Parselmouth formants against:"))
+        layout.addWidget(formant_combo)
+        layout.addWidget(QLabel("Compare Parselmouth pitch against:"))
+        layout.addWidget(pitch_combo)
 
         btn_layout = QHBoxLayout()
         ok_btn, cancel_btn = QPushButton("Run"), QPushButton("Cancel")
@@ -311,7 +334,8 @@ class LauncherWindow(QMainWindow):
         if dialog.exec() != QDialog.Accepted: return
 
         output_dir = self._get_benchmark_output_dir()
-        method = method_combo.currentText()
+        formant_method = formant_combo.currentText()
+        pitch_method = pitch_combo.currentText()
 
         from .utils.get_formants import _HAS_PARSELMOUTH
         if not _HAS_PARSELMOUTH:
@@ -320,8 +344,9 @@ class LauncherWindow(QMainWindow):
 
         from . import benchmarking
         def run_fn(progress_cb, status_cb):
-            benchmarking.run_comprehensive_benchmark(
-                base_method=method,
+            return benchmarking.run_comprehensive_benchmark(
+                formant_method=formant_method,
+                pitch_method=pitch_method,
                 output_dir=output_dir,
                 duration_seconds=15.0,
                 progress_callback=progress_cb,
@@ -332,22 +357,41 @@ class LauncherWindow(QMainWindow):
     def apply_settings(self):
         mgr = settings_manager.get_settings_manager()
 
+        # Handle the subject/data folder first. Switching to a different folder that has its own
+        # settings file loads that folder's settings; otherwise the current settings are kept
+        # (and are written to the folder's file below).
+        if self.recording_settings:
+            self.recording_settings.setdefault('save_csv', config.EXPORT_CONFIG.get('save_csv', True))
+            self.recording_settings.setdefault('save_original_audio', config.EXPORT_CONFIG.get('save_original_audio', True))
+            self.recording_settings.setdefault('save_downsampled_audio', config.EXPORT_CONFIG.get('save_downsampled_audio', False))
+            self.recording_settings.setdefault('data_dir', config.EXPORT_CONFIG.get('data_dir', '.'))
+
+            mgr.set('recording', self.recording_settings)
+            if mgr.switch_project_dir(self.recording_settings.get('data_dir', '.')):
+                self._load_categories_from_manager()
+
+            config.EXPORT_CONFIG.update(self.recording_settings)
+
         if self.analysis_settings:
-            config.AUDIO_CONFIG['sample_rate'] = 2 * self.analysis_settings.get('max_formant', 5000)
-            config.AUDIO_CONFIG['chunk_ms'] = self.analysis_settings.get('chunk_ms', 5)
-            config.AUDIO_CONFIG['number_of_chunks'] = self.analysis_settings.get('number_of_chunks', 5)
-            config.AUDIO_CONFIG['min_rms_db'] = self.analysis_settings.get('min_rms_db', -60.0)
+            # Saved values over the factory defaults. The saved section can be partial (e.g. only
+            # min_rms_db, saved by LiveVowel/LivePitch before Analysis Settings was ever opened).
+            a = {'window_ms': config.FACTORY_AUDIO_CONFIG['window_ms'],
+                 **config.FACTORY_ANALYSIS_CONFIG,
+                 **self.analysis_settings}
+            config.AUDIO_CONFIG['sample_rate'] = 2 * a['max_formant']
+            config.AUDIO_CONFIG['window_ms'] = a['window_ms']
+            config.AUDIO_CONFIG['min_rms_db'] = a['min_rms_db']
+            # The time step is not set here: each visualizer sets it to one display frame (1 / fps)
             config.ANALYSIS_CONFIG.update({
-                'max_formant': self.analysis_settings.get('max_formant', 5000),
-                'n_formants': self.analysis_settings.get('n_formants', 5.5),
-                'window_length': (config.AUDIO_CONFIG['chunk_ms'] * config.AUDIO_CONFIG['number_of_chunks']) / 1000.0,
-                'time_step': config.AUDIO_CONFIG['chunk_ms'] / 1000.0,
-                'min_f0': self.analysis_settings.get('min_f0', 60),
-                'max_f0': self.analysis_settings.get('max_f0', 300),
-                'min_confidence': self.analysis_settings.get('min_confidence', 0.2),
-                'min_rms_db': self.analysis_settings.get('min_rms_db', -60.0),
-                'formant_method': self.analysis_settings.get('formant_method', 'native'),
-                'pitch_method': self.analysis_settings.get('pitch_method', 'native')
+                'max_formant': a['max_formant'],
+                'n_formants': a['n_formants'],
+                'window_length': a['window_ms'] / 1000.0,
+                'min_f0': a['min_f0'],
+                'max_f0': a['max_f0'],
+                'min_confidence': a['min_confidence'],
+                'min_rms_db': a['min_rms_db'],
+                'formant_method': a['formant_method'],
+                'pitch_method': a['pitch_method'],
             })
             mgr.set('analysis', self.analysis_settings)
 
@@ -370,12 +414,6 @@ class LauncherWindow(QMainWindow):
         if self.spectrum_settings:
             config.LIVESPECTRUM_CONFIG.update(self.spectrum_settings)
             mgr.set('spectrum', self.spectrum_settings)
-
-        if self.recording_settings:
-            self.recording_settings.setdefault('save_original_audio', config.EXPORT_CONFIG.get('save_original_audio', True))
-            self.recording_settings.setdefault('save_downsampled_audio', config.EXPORT_CONFIG.get('save_downsampled_audio', False))
-            config.EXPORT_CONFIG.update(self.recording_settings)
-            mgr.set('recording', self.recording_settings)
 
         mgr.save()
 
@@ -400,31 +438,47 @@ class LauncherWindow(QMainWindow):
                     spec_config=dict(cfg, **user_cfg),
                     audio_config=audio_cfg,
                     analysis_config=analysis_cfg,
-                    input_device_index=self.audio_input_device
+                    input_device_index=self.audio_input_device,
+                    input_device_name=self.audio_input_device_name
                 )
-                if "Spectrogram" in name:
-                    self.spectrogram_settings['gui_width'] = app_instance.spec_config['gui_width']
-                    self.spectrogram_settings['gui_height'] = app_instance.spec_config['gui_height']
-                else:
-                    self.spectrum_settings['gui_width'] = app_instance.spec_config['gui_width']
-                    self.spectrum_settings['gui_height'] = app_instance.spec_config['gui_height']
             else:
-                app_instance = module_class(
-                    audio_config=audio_cfg,
-                    analysis_config=analysis_cfg,
-                    input_device_index=self.audio_input_device
-                )
                 if name == "LiveVowel":
-                    self.plotting_settings['gui_size'] = app_instance.gui_info['gui_size']
-                elif name == "LivePitch":
-                    self.pitch_plot_settings['gui_width'] = app_instance.pitch_config['gui_width']
-                    self.pitch_plot_settings['gui_height'] = app_instance.pitch_config['gui_height']
+                    app_instance = module_class(
+                        gui_config=dict(config.LIVEVOWEL_CONFIG, **self.plotting_settings),
+                        audio_config=audio_cfg,
+                        analysis_config=analysis_cfg,
+                        input_device_index=self.audio_input_device,
+                        input_device_name=self.audio_input_device_name
+                    )
+                else:
+                    app_instance = module_class(
+                        audio_config=audio_cfg,
+                        analysis_config=analysis_cfg,
+                        input_device_index=self.audio_input_device,
+                        input_device_name=self.audio_input_device_name
+                    )
         except Exception as e:
             import traceback; traceback.print_exc()
             self.status_label.setText(f"Error: {e}")
         finally:
-            # Save any on-the-fly window resize changes to user settings
             mgr = settings_manager.get_settings_manager()
+            # Each module saves its own changes (window size, gain, scale, template) to the settings
+            # manager when it closes. Re-read them so the launcher's copies don't overwrite them, e.g.
+            # on first use, when a category did not exist in the settings file before the module ran.
+            self._load_categories_from_manager()
+
+            # Sync max_formant changes made with [ / ] in LiveSpectrum back to analysis settings
+            if 'app_instance' in locals() and getattr(app_instance, 'max_formant_changed', False):
+                new_mf = int(app_instance.max_formant)
+                config.ANALYSIS_CONFIG['max_formant'] = new_mf
+                # Merge into the latest saved settings (not just our possibly-stale in-memory
+                # copy) so this is the single place max_formant changes get written to disk.
+                self.analysis_settings = mgr.get('analysis') or self.analysis_settings or config.ANALYSIS_CONFIG.copy()
+                self.analysis_settings['max_formant'] = new_mf
+                config.AUDIO_CONFIG['sample_rate'] = 2 * new_mf
+                mgr.set('analysis', self.analysis_settings)
+
+            # Save any on-the-fly window resize changes to user settings
             if self.plotting_settings:
                 config.LIVEVOWEL_CONFIG.update(self.plotting_settings)
                 mgr.set('plotting', self.plotting_settings)
@@ -449,19 +503,18 @@ def main():
     settings_manager.init_settings()
     mgr = settings_manager.get_settings_manager()
 
+    # Reopen the subject/data folder that was active last time, so its settings are used below
+    recording = mgr.get('recording') or {}
+    if recording.get('data_dir', '.') not in ('', '.'):
+        mgr.switch_project_dir(recording['data_dir'])
+    if recording:
+        config.EXPORT_CONFIG.update(recording)
+
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
 
-    # Query monitor resolution on startup to configure smart defaults if no saved settings exist
-    screen = app.primaryScreen()
-    has_large_screen = True
-    if screen:
-        screen_size = screen.size()
-        # If screen vertical resolution is less than 1080 (e.g., 768p or lower), flag as small screen
-        if screen_size.height() < 1080:
-            has_large_screen = False
-
-    # Check for saved settings, update in-memory config
+    # Check for saved settings, update in-memory config. Window sizes that do not fit the screen
+    # are shrunk by each visualizer when it opens (BaseAudioVisualizer.fit_to_desktop).
     analysis = mgr.get('analysis')
     if analysis:
         config.ANALYSIS_CONFIG.update(analysis)
@@ -469,33 +522,18 @@ def main():
     pitch = mgr.get('pitch_plot')
     if pitch:
         config.LIVEPITCH_CONFIG.update(pitch)
-    elif not has_large_screen:
-        # Override to small screen defaults for 768p
-        config.LIVEPITCH_CONFIG['gui_width'] = 1400
-        config.LIVEPITCH_CONFIG['gui_height'] = 900
 
     plot = mgr.get('plotting')
     if plot:
         config.LIVEVOWEL_CONFIG.update(plot)
-    elif not has_large_screen:
-        # Override to small screen defaults for 768p
-        config.LIVEVOWEL_CONFIG['gui_size'] = (1200.0, 900.0)
 
     spec = mgr.get('spectrogram')
     if spec:
         config.LIVESPECTROGRAM_CONFIG.update(spec)
-    elif not has_large_screen:
-        # Override to small screen defaults for 768p
-        config.LIVESPECTROGRAM_CONFIG['gui_width'] = 1400
-        config.LIVESPECTROGRAM_CONFIG['gui_height'] = 900
 
     spectrum = mgr.get('spectrum')
     if spectrum:
         config.LIVESPECTRUM_CONFIG.update(spectrum)
-    elif not has_large_screen:
-        # Override to small screen defaults for 768p
-        config.LIVESPECTRUM_CONFIG['gui_width'] = 1400
-        config.LIVESPECTRUM_CONFIG['gui_height'] = 900
 
     window = LauncherWindow()
     window.show()

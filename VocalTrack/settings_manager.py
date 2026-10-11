@@ -4,12 +4,12 @@
 import json
 # Import os for file path and directory operations
 import os
-# Import shutil for file copying operations (settings migration)
-import shutil
 # Import sys to detect PyInstaller frozen state and get executable path
 import sys
 # Import Path for object-oriented file path manipulation
 from pathlib import Path
+# Import config for translating old analysis method names in loaded settings
+from . import config
 
 class SettingsManager:
     """Manages loading and saving application settings to/from JSON file."""
@@ -23,28 +23,62 @@ class SettingsManager:
         """
         # Check if settings_file path was explicitly provided
         if settings_file is None:
-            # Check if running as PyInstaller bundle (frozen executable)
-            if getattr(sys, "frozen", False):
-                # Bundled app: store settings next to the executable.
-                # Get directory containing the executable file
-                exe_dir = Path(sys.executable).resolve().parent
-                # Create settings filename in same directory as executable
-                settings_file = str(exe_dir / ".VocalTrack_settings.json")
-            else:
-                # Default location: project root/.VocalTrack_settings.json
-                # Get parent directory of current module (VocalTrack/), then parent again (project root)
-                project_root = Path(__file__).resolve().parent.parent
-                # Create settings filepath in project root directory
-                settings_file = str(project_root / ".VocalTrack_settings.json")
+            settings_file = self._default_settings_file()
 
-                        
-        # Store the settings file path for later save operations
+        # The main settings file. It always records which subject/data folder is active
+        # (in its 'recording' section) so the folder is restored on the next startup.
+        self.root_settings_file = settings_file
+        # The file currently being read/written (the root file, or a subject/data folder's file)
         self.settings_file = settings_file
+        # Resolved path of the active subject/data folder (None = project root)
+        self.project_dir = None
         # Load settings from file (or create empty dict if file doesn't exist)
         self.settings = self.load()
         # If settings file doesn't exist yet, create it with current (empty) settings
         if not os.path.exists(self.settings_file):
             self.save()
+
+    @staticmethod
+    def _default_settings_file():
+        """Return the default settings path: next to the executable when bundled, else the project root."""
+        if getattr(sys, "frozen", False):
+            # Bundled app: store settings next to the executable.
+            base_dir = Path(sys.executable).resolve().parent
+        else:
+            # Project root: parent directory of this module's folder (VocalTrack/)
+            base_dir = Path(__file__).resolve().parent.parent
+        return str(base_dir / ".VocalTrack_settings.json")
+
+    def switch_project_dir(self, project_dir):
+        """Switch the active settings file to a specific subject/data directory.
+
+        Does nothing if that folder is already active, so settings changed in memory are not
+        overwritten by the folder's file every time settings are applied.
+
+        Args:
+            project_dir (str): Path to subject/data directory. If '.' or empty, resets to default root.
+
+        Returns:
+            bool: True if settings were loaded from the newly selected folder's settings file.
+        """
+        new_dir = None if (not project_dir or project_dir == '.') else str(Path(project_dir).resolve())
+        if new_dir == self.project_dir:
+            return False
+        self.project_dir = new_dir
+        self.settings_file = (self.root_settings_file if new_dir is None
+                              else str(Path(new_dir) / ".VocalTrack_settings.json"))
+
+        # Load the folder's settings if present. Keep the current 'recording' section, which
+        # holds the folder and device the user just chose.
+        if os.path.exists(self.settings_file):
+            new_settings = self.load()
+            if new_settings:
+                recording = self.settings.get('recording')
+                self.settings.update(new_settings)
+                if recording is not None:
+                    self.settings['recording'] = recording
+                return True
+        return False
     
     def load(self):
         """Load settings from file.
@@ -58,7 +92,14 @@ class SettingsManager:
                 # Open settings file in read mode with default UTF-8 encoding
                 with open(self.settings_file, 'r') as f:
                     # Parse JSON file contents into Python dictionary
-                    return json.load(f)
+                    settings = json.load(f)
+                # Translate analysis method names saved by earlier versions ('native')
+                if isinstance(settings, dict) and isinstance(settings.get('analysis'), dict):
+                    config.update_method_names(settings['analysis'])
+                # Convert window settings saved by earlier versions (chunk_ms x number_of_chunks)
+                if isinstance(settings, dict):
+                    config.update_window_settings(settings)
+                return settings
             except (json.JSONDecodeError, IOError) as e:
                 # Print warning if file is corrupted or unreadable (don't crash app)
                 print(f"Warning: Could not load settings from {self.settings_file}: {e}")
@@ -80,6 +121,20 @@ class SettingsManager:
         except IOError as e:
             # Print warning if file cannot be written (don't crash app)
             print(f"Warning: Could not save settings to {self.settings_file}: {e}")
+
+        # When a subject/data folder is active, also record it in the root settings file
+        # so the same folder is reopened on the next startup
+        if self.settings_file != self.root_settings_file and 'recording' in self.settings:
+            try:
+                root = {}
+                if os.path.exists(self.root_settings_file):
+                    with open(self.root_settings_file, 'r') as f:
+                        root = json.load(f)
+                root['recording'] = self.settings['recording']
+                with open(self.root_settings_file, 'w') as f:
+                    json.dump(root, f, indent=2)
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"Warning: Could not update {self.root_settings_file}: {e}")
     
     def set(self, key, value):
         """Set a setting value.
@@ -103,30 +158,6 @@ class SettingsManager:
         """
         # Retrieve value from settings dictionary, return default if key doesn't exist
         return self.settings.get(key, default)
-    
-    def get_nested(self, *keys, default=None):
-        """Get nested setting value.
-        
-        Args:
-            *keys: Nested keys (e.g., 'analysis', 'window_ms')
-            default: Default value if path not found
-            
-        Returns:
-            Setting value or default
-        """
-        # Start at root of settings dictionary
-        value = self.settings
-        # Traverse nested dictionary path using each key in sequence
-        for key in keys:
-            # Check if current value is a dictionary (can be further indexed)
-            if isinstance(value, dict):
-                # Get next level of nesting using current key
-                value = value.get(key)
-            else:
-                # Path is broken (non-dict encountered before end), return default
-                return default
-        # Return final value if we reached end of path, otherwise return default
-        return value if value is not None else default
     
     def set_nested(self, *keys_and_value):
         """Set nested setting value.
@@ -152,11 +183,6 @@ class SettingsManager:
         
         # Set the value at the final key location
         current[keys[-1]] = value
-    
-    def clear(self):
-        """Clear all settings."""
-        # Replace settings dictionary with empty dictionary (removes all keys)
-        self.settings = {}
 
 
 # Global settings manager instance

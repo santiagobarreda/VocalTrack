@@ -14,35 +14,37 @@ from . import config
 
 def save_wav(filename, samples, sample_rate, normalize=True):
     """Save audio samples to WAV file.
-    
+
+    The audio is scaled and written one block at a time, so saving a long recording needs
+    little memory beyond the recording itself.
+
     Args:
         filename (str): Output WAV filename
-        samples (ndarray): Audio samples (int16)
+        samples (ndarray or list of ndarray): Audio samples (int16). A list of arrays is written
+            one after the other, as a single recording.
         sample_rate (int): Sample rate in Hz
         normalize (bool): Scale audio to use full range. Defaults to True.
     """
     # Create output directory if it doesn't exist (mkdir -p behavior)
     os.makedirs(os.path.dirname(filename), exist_ok=True)
-    
-    # Convert samples to float64 for normalization calculations (prevents overflow)
-    samples = samples.astype(np.float64)
-    
+
+    arrays = [np.asarray(a) for a in (samples if isinstance(samples, (list, tuple)) else [samples])]
+
     # Normalize to near-maximum amplitude
     # Check if normalization is enabled
+    scale_factor = None
     if normalize:
-        # Find maximum absolute value in audio array
-        max_val = np.abs(samples).max()
+        # Find maximum absolute value in the audio
+        max_val = max((max(float(a.max()), -float(a.min())) for a in arrays if a.size), default=0.0)
         # Only normalize if audio contains non-zero samples
         if max_val > 0:
             # Scale to 97% of max int16 range to avoid clipping
             # Calculate scaling factor (target amplitude / current max amplitude)
             scale_factor = (32767 * 0.97) / max_val
-            # Apply scaling to all samples
-            samples = samples * scale_factor
-    
-    # Clip values to int16 range and convert to int16 dtype for WAV format
-    samples = np.clip(samples, -32768, 32767).astype(np.int16)
-    
+
+    # One second of audio is converted and written at a time
+    block_size = max(int(sample_rate), 1)
+
     # Open WAV file for writing in binary mode
     with wave.open(filename, 'wb') as wav_file:
         # Set number of audio channels (1 = mono)
@@ -51,8 +53,14 @@ def save_wav(filename, samples, sample_rate, normalize=True):
         wav_file.setsampwidth(2)  # 16-bit
         # Set sample rate (samples per second)
         wav_file.setframerate(sample_rate)
-        # Write audio data as bytes to WAV file
-        wav_file.writeframes(samples.tobytes())
+        for a in arrays:
+            for start in range(0, a.size, block_size):
+                # Convert the block to float64 for the scaling (prevents overflow)
+                block = a[start:start + block_size].astype(np.float64)
+                if scale_factor is not None:
+                    block *= scale_factor
+                # Clip values to int16 range, convert to int16 for WAV format, and write the bytes
+                wav_file.writeframes(np.clip(block, -32768, 32767, out=block).astype(np.int16).tobytes())
 
 
 def save_formants_csv(filename, formant_data):
@@ -78,7 +86,7 @@ def save_formants_csv(filename, formant_data):
     # Open CSV file for writing with UTF-8 encoding
     with open(filename, 'w', newline='', encoding='utf-8') as f:
         # Create CSV dict writer with specified column names
-        writer = csv.DictWriter(f, fieldnames=['time_ms', 'f0', 'f1', 'f1_smoothed', 'f2', 'f2_smoothed', 'f3', 'voicing', 'track_number'])
+        writer = csv.DictWriter(f, fieldnames=['time_ms', 'f0', 'f1', 'f1_smoothed', 'f2', 'f2_smoothed', 'f3', 'voicing', 'track_number'], extrasaction='ignore')
         # Write CSV header row with column names
         writer.writeheader()
         for row in formant_data:
@@ -126,7 +134,7 @@ def save_pitch_csv(filename, pitch_data, min_f0=None, max_f0=None):
     if any('track' in row for row in pitch_data):
         columns = ['track'] + columns
     with open(filename, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=columns)
+        writer = csv.DictWriter(f, fieldnames=columns, extrasaction='ignore')
         writer.writeheader()
         for row in pitch_data:
             f0 = row.get('f0')
@@ -135,16 +143,28 @@ def save_pitch_csv(filename, pitch_data, min_f0=None, max_f0=None):
                 writer.writerow(row)
 
 
+_issued_session_names = set()  # Names already handed out in this run
+
+
 def create_session_name(speaker_id='unknown'):
-    """Generate session name with timestamp.
-    
+    """Generate a unique session name with timestamp.
+
+    Timestamps have 1-second resolution, so a second session started within the same second
+    gets a numeric suffix instead of overwriting the first session's files.
+
     Args:
         speaker_id (str): Speaker identifier
-        
+
     Returns:
-        str: Session name like "speaker_2026-01-29_143022"
+        str: Session name like "speaker_2026-01-29_143022" (or "speaker_2026-01-29_143022_2")
     """
     # Get current time and format as YYYY-MM-DD_HHMMSS string
     timestamp = datetime.now().strftime('%Y-%m-%d_%H%M%S')
     # Combine speaker ID with timestamp using underscore separator
-    return f"{speaker_id}_{timestamp}"
+    base_name = f"{speaker_id}_{timestamp}"
+    name, suffix = base_name, 2
+    while name in _issued_session_names:
+        name = f"{base_name}_{suffix}"
+        suffix += 1
+    _issued_session_names.add(name)
+    return name

@@ -2,70 +2,117 @@
 import os
 # Import sys for accessing PyInstaller temp directory when bundled as exe
 import sys
-# Import csv for reading template files
-import csv
+# Import json for reading template files
+import json
 # Import math for log-space scaling
 import math
-from venv import logger
+import logging
 # Import pygame for image loading and GUI rendering
 import pygame
 
+logger = logging.getLogger(__name__)
 
-# Mapping of image numbers (1-30) to IPA vowel symbols
-# This allows showing all 30 images with proper vowel identities
-IPA_IMAGE_MAP = {
-    1: 'i',      # Close front unrounded
-    2: 'y',      # Close front rounded
-    3: 'ɨ',      # Close central unrounded
-    4: 'ʉ',      # Close central rounded
-    5: 'ɯ',      # Close back unrounded
-    6: 'u',      # Close back rounded
-    7: 'ɪ',      # Near-close front unrounded
-    8: 'ʏ',      # Near-close front rounded
-    9: 'ʊ',      # Near-close back rounded
-    10: 'e',     # Close-mid front unrounded
-    11: 'ø',     # Close-mid front rounded
-    12: 'ɘ',     # Close-mid central unrounded
-    13: 'ɵ',     # Close-mid central rounded
-    14: 'ɤ',     # Close-mid back unrounded
-    15: 'o',     # Close-mid back rounded
-    16: 'ɛ',     # Open-mid front unrounded
-    17: 'œ',     # Open-mid front rounded
-    18: 'ə',     # Mid central (schwa)
-    19: 'ɜ',     # Open-mid central unrounded
-    20: 'ɞ',     # Open-mid central rounded
-    21: 'ʌ',     # Open-mid back unrounded
-    22: 'ɔ',     # Open-mid back rounded
-    23: 'æ',     # Near-open front unrounded
-    24: 'ɐ',     # Near-open central
-    25: 'a',     # Open front unrounded
-    26: 'ɶ',     # Open front rounded
-    27: 'ɑ',     # Open back unrounded
-    28: 'ɒ',     # Open back rounded
-    29: 'ɞ',     # Open-mid central rounded (duplicate for completeness)
-    30: 'ɑ',     # Open back unrounded (duplicate for completeness)
+
+# The IPA vowel images (1-30): symbol, keyword and description of each. The images are in IPA
+# chart order, followed by the two r-colored vowels
+IPA_IMAGE_INFO = {
+    1: {'symbol': 'i', 'name': 'fleece', 'description': 'Close front unrounded vowel'},
+    2: {'symbol': 'y', 'name': 'French u', 'description': 'Close front rounded vowel'},
+    3: {'symbol': 'ɨ', 'name': 'roses / Russian yery', 'description': 'Close central unrounded vowel'},
+    4: {'symbol': 'ʉ', 'name': 'Swedish u', 'description': 'Close central rounded vowel'},
+    5: {'symbol': 'ɯ', 'name': 'Japanese u', 'description': 'Close back unrounded vowel'},
+    6: {'symbol': 'u', 'name': 'goose', 'description': 'Close back rounded vowel'},
+    7: {'symbol': 'ɪ', 'name': 'kit', 'description': 'Near-close near-front unrounded vowel'},
+    8: {'symbol': 'ʏ', 'name': 'German hübsch', 'description': 'Near-close near-front rounded vowel'},
+    9: {'symbol': 'ʊ', 'name': 'foot', 'description': 'Near-close near-back rounded vowel'},
+    10: {'symbol': 'e', 'name': 'face', 'description': 'Close-mid front unrounded vowel'},
+    11: {'symbol': 'ø', 'name': 'French peu / German schön', 'description': 'Close-mid front rounded vowel'},
+    12: {'symbol': 'ɘ', 'name': 'Close-mid central unrounded', 'description': 'Close-mid central unrounded vowel'},
+    13: {'symbol': 'ɵ', 'name': 'Swedish dumt', 'description': 'Close-mid central rounded vowel'},
+    14: {'symbol': 'ɤ', 'name': 'Mandarin e', 'description': 'Close-mid back unrounded vowel'},
+    15: {'symbol': 'o', 'name': 'goat', 'description': 'Close-mid back rounded vowel'},
+    16: {'symbol': 'ə', 'name': 'schwa / comma', 'description': 'Mid central vowel (schwa)'},
+    17: {'symbol': 'ɛ', 'name': 'dress', 'description': 'Open-mid front unrounded vowel'},
+    18: {'symbol': 'œ', 'name': 'French neuf / German Hölle', 'description': 'Open-mid front rounded vowel'},
+    19: {'symbol': 'ɜ', 'name': 'nurse', 'description': 'Open-mid central unrounded vowel'},
+    20: {'symbol': 'ɞ', 'name': 'Irish bird', 'description': 'Open-mid central rounded vowel'},
+    21: {'symbol': 'ʌ', 'name': 'strut', 'description': 'Open-mid back unrounded vowel'},
+    22: {'symbol': 'ɔ', 'name': 'thought / caught', 'description': 'Open-mid back rounded vowel'},
+    23: {'symbol': 'æ', 'name': 'trap / bad', 'description': 'Near-open front unrounded vowel'},
+    24: {'symbol': 'ɐ', 'name': 'German aber', 'description': 'Near-open central vowel'},
+    25: {'symbol': 'a', 'name': 'Spanish a / German Vater', 'description': 'Open front unrounded vowel'},
+    26: {'symbol': 'ɶ', 'name': 'Open front rounded', 'description': 'Open front rounded vowel'},
+    27: {'symbol': 'ɑ', 'name': 'father / lot', 'description': 'Open back unrounded vowel'},
+    28: {'symbol': 'ɒ', 'name': 'British lot / cloth', 'description': 'Open back rounded vowel'},
+    29: {'symbol': 'ɚ', 'name': 'letter (American English)', 'description': 'R-colored mid central vowel'},
+    30: {'symbol': 'ɝ', 'name': 'nurse (American English)', 'description': 'R-colored open-mid central unrounded vowel'},
 }
 
+# Image number -> IPA symbol, and IPA symbol -> image number
+IPA_IMAGE_MAP = {image_num: info['symbol'] for image_num, info in IPA_IMAGE_INFO.items()}
+SYMBOL_TO_IMAGE_MAP = {symbol: image_num for image_num, symbol in IPA_IMAGE_MAP.items()}
+
+# Project root: the folder containing the VocalTrack package (not the current working directory,
+# so images and templates are found wherever VocalTrack is started from)
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 def get_resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller """
-    try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
-    except Exception:
-        # If not bundled, use the current working directory
-        base_path = os.path.abspath(".")
+    """
+    Absolute path to a file bundled with the program (e.g. "VocalTrack/images/green/1.png"),
+    relative to the project root, or to the PyInstaller bundle folder when running as an .exe.
+    """
+    base_path = getattr(sys, '_MEIPASS', _PROJECT_ROOT)
     return os.path.join(base_path, relative_path)
 
 
 def get_external_path(relative_path):
-    """ Get path to files living NEXT to the .exe (like templates) """
-    if getattr(sys, 'frozen', False):
-        # If running as .exe, look in the folder where the .exe lives
-        base_path = os.path.dirname(sys.executable)
-    else:
-        # If running as script, look in the project root
-        base_path = os.path.abspath(".")
+    """
+    Absolute path to a user-editable file (e.g. "templates/..."), relative to the project root,
+    or to the folder holding the .exe when running as an .exe.
+    """
+    base_path = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else _PROJECT_ROOT
     return os.path.join(base_path, relative_path)
+
+
+def _first_template(directory, default_name):
+    """The default template in a folder if it is there (matching its name without regard to
+    upper/lower case, which differs between file systems), otherwise the first template in
+    alphabetical order, or None if the folder has no templates."""
+    json_files = sorted((f for f in os.listdir(directory) if f.endswith('.json')), key=str.lower)
+    for fname in json_files:
+        if fname.lower() == f"{default_name}.json".lower():
+            return os.path.join(directory, fname)
+    return os.path.join(directory, json_files[0]) if json_files else None
+
+
+def find_template_file(template_dir="templates", default_name=None):
+    """Locate the active vowel template JSON file, checking project data_dir first.
+
+    Used when the selected template cannot be found: the default template if it is there,
+    otherwise the first template in alphabetical order."""
+    if default_name is None:
+        from VocalTrack import config as _config
+        default_name = os.path.splitext(_config.FACTORY_LIVEVOWEL_CONFIG['template_file'])[0]
+    # 0. Check project data_dir first if configured
+    try:
+        from VocalTrack import config
+        data_dir = config.EXPORT_CONFIG.get('data_dir', '.')
+        if data_dir and data_dir != '.':
+            proj_dir = os.path.join(data_dir, template_dir)
+            if os.path.isdir(proj_dir):
+                return _first_template(proj_dir, default_name)
+            # When a subject folder is configured, DO NOT fall back to main templates!
+            return None
+    except Exception:
+        pass
+
+    # 1. The default template, or else the first template in the main templates folder
+    full_dir = get_external_path(template_dir)
+    if os.path.isdir(full_dir):
+        return _first_template(full_dir, default_name)
+
+    return None
 
 
 class IPALabels:
@@ -77,50 +124,34 @@ class IPALabels:
     - `RecordingLabel`: a draggable, larger label used to annotate the vowel plot
 
     Resource expectations:
-    - IPA symbol images are loaded from an `images/` directory at runtime. When the
-        application is bundled the images may live under the PyInstaller `_MEIPASS`
-        temporary directory and are looked up accordingly.
-    - Vowel template CSV files (formant reference values) are expected to live in the
-        project's `templates/` folder and are intentionally not bundled so users can
-    edit templates without rebuilding the executable.
-
-    Responsibilities:
-    - Load vowel template rows from a CSV (image number + F1/F2). Templates are
-        expected in the project's `templates/` folder and are bundled into the
-        executable.
-    - Create two UI sets (green template set + blue comparison set) of
-        `MenuButton`/`RecordingLabel` widgets for all available IPA images.
-    - Convert between F1/F2 (Hz) and pixel coordinates supporting linear or
-        logarithmic frequency scaling.
+    - IPA symbol images are loaded from an `images/` directory at runtime.
+    - Vowel template JSON files (formant reference values) live in the `templates/` folder.
 
     Args:
-            screen (pygame.Surface): Display surface to draw buttons/labels on.
-            csv_path (str, optional): Path to CSV file with image numbers and F1/F2
-                    data. If not provided the code looks for `templates/vowel_template.csv`
-                    in the project root.
-            gui_info (dict, optional): GUI configuration dict with keys like
-                    `'f1_range'`, `'f2_range'`, and `'freq_scale'` used for Hz↔pixel
-                    conversions.
+        screen (pygame.Surface): Display surface to draw buttons/labels on.
+        template_path (str, optional): Path to template JSON file. If None, auto-discovered.
+        gui_info (dict, optional): GUI configuration dict used for Hz↔pixel conversions.
     """
-    def __init__(self, screen, csv_path=None, gui_info=None):
+    def __init__(self, screen, template_path=None, gui_info=None):
         # Store reference to pygame display surface
         self.screen = screen
         # Store GUI info for Hz-to-pixel conversion
         self.gui_info = gui_info or {}
-        # Initialize empty event list
-        self.events = []
 
-        # Load image specifications from CSV
-        if csv_path is None:
-            # Look for the "templates" folder sitting next to the .exe
-            csv_path = get_external_path(os.path.join("templates", "vowel_template.csv"))
+        # Locate active template file if not specified
+        if template_path is None:
+            if self.gui_info.get('template_file') in ('None', 'none'):
+                template_path = None
+            else:
+                template_path = find_template_file()
+        elif template_path in ('None', 'none', ''):
+            template_path = None
 
-        # Store active CSV path so runtime edits can be persisted by keyboard shortcut.
-        self.csv_path = csv_path
-      
+        # Store active template path so runtime edits can be persisted
+        self.template_path = template_path
 
-        # Parse CSV to get template vowels and their F1/F2 positions
-        self.template_data = self._load_csv(csv_path)
+        # Parse template to get vowels and their F1/F2 positions
+        self.template_data = self._load_template(template_path) if template_path else []
         # Create set of image numbers in template for quick lookup
         self.template_image_nums = {v['image_num'] for v in self.template_data}
         
@@ -132,23 +163,57 @@ class IPALabels:
         # Create buttons and labels for ALL 30 available images
         self._create_buttons_and_labels()
 
-    def save_current_template(self, csv_path=None):
-        """Persist the current green IPA template toggles and positions to CSV.
+    def save_current_template(self, file_path=None):
+        """Persist the current green IPA template toggles and positions to JSON.
 
         The first 30 buttons/labels are the green template set. Any green label whose
         button is currently toggled on is written to the template with its current F1/F2
-        position in Hz.
+        position in Hz and full phonetic metadata.
 
         Args:
-            csv_path (str, optional): Output template path. Defaults to active template file.
+            file_path (str, optional): Output template path. If None, saves to a new
+                timestamped template file (custom_template_YYYY-MM-DD_HHMMSS.json) to
+                prevent overwriting active reference templates.
 
         Returns:
             tuple: (success: bool, output_path: str, saved_count: int)
         """
-        output_path = csv_path or self.csv_path
-        rows_to_save = []
+        from datetime import datetime
 
-        # First 30 entries are always the green/template set.
+        if file_path is None:
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+            filename = f"custom_template_{timestamp}.json"
+
+            # Determine destination directory:
+            # 1. Directory of current self.template_path if valid
+            # 2. Configured project data_dir/templates
+            # 3. Base application templates directory
+            target_dir = None
+            if self.template_path and os.path.dirname(self.template_path):
+                candidate_dir = os.path.dirname(self.template_path)
+                if os.path.isdir(candidate_dir):
+                    target_dir = candidate_dir
+
+            if not target_dir:
+                try:
+                    from VocalTrack import config
+                    data_dir = config.EXPORT_CONFIG.get('data_dir', '.')
+                    if data_dir and data_dir != '.':
+                        target_dir = os.path.join(data_dir, "templates")
+                except Exception:
+                    pass
+
+            if not target_dir:
+                target_dir = get_external_path("templates")
+
+            output_path = os.path.abspath(os.path.join(target_dir, filename))
+        else:
+            output_path = file_path
+            if not output_path.endswith('.json'):
+                output_path = output_path + '.json'
+            output_path = os.path.abspath(output_path)
+
+        vowel_entries = []
         for idx in range(30):
             button = self.buttons[idx]
             textbox = self.textboxes[idx]
@@ -156,76 +221,106 @@ class IPALabels:
                 continue
 
             image_num = idx + 1
-            # Use stored Hz values when available; otherwise derive from current pixel location.
-            if textbox.f1 is not None and textbox.f2 is not None:
-                f1_hz, f2_hz = textbox.f1, textbox.f2
-            else:
-                f1_hz, f2_hz = self._pixels_to_hz(textbox.rect.x, textbox.rect.y)
+            info = IPA_IMAGE_INFO.get(image_num, {})
+            symbol = info.get('symbol', IPA_IMAGE_MAP.get(image_num, ''))
+            name = info.get('name', '')
+            desc = info.get('description', '')
 
-            rows_to_save.append([image_num, f"{f1_hz:.2f}", f"{f2_hz:.2f}", ""])
+            if textbox.f1 is not None and textbox.f2 is not None:
+                f1_hz, f2_hz = round(float(textbox.f1), 1), round(float(textbox.f2), 1)
+            else:
+                f1_calc, f2_calc = self._pixels_to_hz(*textbox.rect.center)
+                f1_hz, f2_hz = round(float(f1_calc), 1), round(float(f2_calc), 1)
+
+            vowel_entries.append({
+                "image_num": image_num,
+                "symbol": symbol,
+                "name": name,
+                "description": desc,
+                "f1": f1_hz,
+                "f2": f2_hz
+            })
+
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
 
         try:
-            # Create target directory if needed (safe when it already exists).
-            output_dir = os.path.dirname(output_path)
-            if output_dir:
-                os.makedirs(output_dir, exist_ok=True)
-
-            with open(output_path, 'w', encoding='utf-8', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerows(rows_to_save)
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            template_obj = {
+                "name": f"Custom Vowel Template ({now_str})",
+                "description": f"User-configured vowel targets saved from LiveVowel on {now_str}",
+                "vowels": vowel_entries
+            }
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(template_obj, f, indent=2, ensure_ascii=False)
         except OSError:
-            return False, output_path, len(rows_to_save)
+            return False, output_path, len(vowel_entries)
 
-        # Refresh in-memory template state so Ctrl+T uses the newly saved set.
-        self.csv_path = output_path
-        self.template_data = self._load_csv(output_path)
+        self.template_path = output_path
+        self.template_data = self._load_template(output_path)
         self.template_image_nums = {v['image_num'] for v in self.template_data}
 
-        return True, output_path, len(rows_to_save)
+        return True, output_path, len(vowel_entries)
 
-    def _load_csv(self, csv_path):
-        """Load vowel data from CSV file.
-        
-        Expected CSV format (no header):
-        ImageNumber, F1, F2, F3
-        
-        Example:
-        23, 883.66, 1725.00, 2685.08
-        
-        Args:
-            csv_path (str): Path to CSV file
-            
-                Returns:
-                        list: List of dicts with keys: 'image_num', 'f1', 'f2'
+    @staticmethod
+    def _load_template(file_path):
+        """Load vowel template data from a JSON file.
 
-                Notes:
-                        - The CSV is expected to contain numeric image IDs and at least two
-                            formant columns (F1, F2). Malformed rows are skipped silently.
-                        - Template CSV files are intended to be editable by users and should
-                            therefore live outside bundled resources (project `templates/`).
+        Returns:
+            list: List of dicts with keys: 'image_num', 'symbol', 'name', 'description', 'f1', 'f2'
         """
-        vowels = []
+        if not file_path or not os.path.exists(file_path):
+            return []
+
         try:
-            with open(csv_path, 'r', encoding='utf-8') as f:
-                reader = csv.reader(f)
-                for row in reader:
-                    if len(row) >= 3:
-                        try:
-                            image_num = int(row[0].strip())
-                            f1 = float(row[1])
-                            f2 = float(row[2])
-                            vowels.append({
-                                'image_num': image_num,
-                                'f1': f1,
-                                'f2': f2
-                            })
-                        except (ValueError, IndexError):
-                            # Skip malformed rows
-                            continue
-        except FileNotFoundError:
-            pass
-        
-        return vowels
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            vowels_list = data.get('vowels', data) if isinstance(data, dict) else data
+            vowels = []
+            used_image_nums = set()
+            for entry in vowels_list:
+                if not isinstance(entry, dict):
+                    continue
+                symbol = str(entry.get('symbol', entry.get('ipa', entry.get('letter', '')))).strip()
+                img_num = entry.get('image_num')
+                if img_num is None:
+                    if symbol in SYMBOL_TO_IMAGE_MAP:
+                        img_num = SYMBOL_TO_IMAGE_MAP[symbol]
+                    elif symbol.lower() in SYMBOL_TO_IMAGE_MAP:
+                        img_num = SYMBOL_TO_IMAGE_MAP[symbol.lower()]
+                    else:
+                        # No image for this symbol: skip it (don't draw it as another vowel)
+                        logger.warning(f"Template {os.path.basename(file_path)}: no IPA image for symbol "
+                                       f"{symbol!r}, skipping it")
+                        continue
+                else:
+                    img_num = int(img_num)
+                # Each image is one label, so a second vowel with the same symbol would replace the first
+                if img_num in used_image_nums:
+                    logger.warning(f"Template {os.path.basename(file_path)}: symbol {symbol!r} appears more "
+                                   f"than once, keeping the first")
+                    continue
+
+                try:
+                    f1 = float(entry.get('f1', entry.get('F1', 0)))
+                    f2 = float(entry.get('f2', entry.get('F2', 0)))
+                    if f1 > 0 and f2 > 0:
+                        used_image_nums.add(img_num)
+                        vowels.append({
+                            'image_num': img_num,
+                            'symbol': symbol or IPA_IMAGE_MAP.get(img_num, ''),
+                            'name': entry.get('name', entry.get('keyword', '')),
+                            'description': entry.get('description', ''),
+                            'f1': f1,
+                            'f2': f2
+                        })
+                except (ValueError, TypeError):
+                    continue
+            return vowels
+        except Exception as e:
+            logger.warning(f"Could not read vowel template {file_path}: {e}")
+            return []
 
     def _create_buttons_and_labels(self):
         """Create MenuButton and RecordingLabel objects for all IPA symbols.
@@ -295,6 +390,9 @@ class IPALabels:
                     label_visible = False
                 
                 tmp_textbox = RecordingLabel(label_x, label_y, image_filename, f1, f2, label_color)
+                if f1 is not None and f2 is not None:
+                    # Labels with a formant position are placed by their center (the symbol's center)
+                    tmp_textbox.rect.center = (label_x, label_y)
                 tmp_textbox.visible = label_visible
                 
                 # Add label to list
@@ -447,7 +545,7 @@ class IPALabels:
                 f1, f2 = textbox.f1, textbox.f2
             else:
                 # Convert current pixel position to Hz values
-                f1, f2 = self._pixels_to_hz(textbox.rect.x, textbox.rect.y)
+                f1, f2 = self._pixels_to_hz(*textbox.rect.center)
             
             # Apply scaling
             # Multiply F1 by scale factor (e.g., 1.01 = 1% increase)
@@ -461,11 +559,7 @@ class IPALabels:
             # Store scaled F2 value
             textbox.f2 = f2
             # Convert scaled Hz values back to pixel coordinates
-            new_x, new_y = self._hz_to_pixels(f1, f2)
-            # Update label x position
-            textbox.rect.x = new_x
-            # Update label y position
-            textbox.rect.y = new_y
+            textbox.rect.center = self._hz_to_pixels(f1, f2)
 
     def scale_formants_log(self, delta):
         """Scale all IPA labels additively in log space.
@@ -484,7 +578,7 @@ class IPALabels:
                 f1, f2 = textbox.f1, textbox.f2
             else:
                 # Convert current pixel position to Hz values
-                f1, f2 = self._pixels_to_hz(textbox.rect.x, textbox.rect.y)
+                f1, f2 = self._pixels_to_hz(*textbox.rect.center)
             
             # Apply log-space scaling
             # Clamp F1 to prevent log(0)
@@ -502,11 +596,7 @@ class IPALabels:
             # Store scaled F2 value in Hz
             textbox.f2 = f2
             # Convert scaled Hz values back to pixel coordinates
-            new_x, new_y = self._hz_to_pixels(f1, f2)
-            # Update label x position
-            textbox.rect.x = new_x
-            # Update label y position
-            textbox.rect.y = new_y
+            textbox.rect.center = self._hz_to_pixels(f1, f2)
 
     def run_ipa_buttons(self, event_holder, state):
         """Handle IPA button rendering and click events based on current state.
@@ -554,7 +644,7 @@ class IPALabels:
                 # Check if drag operation just ended this frame
                 if was_dragging and not txtbx.is_dragging:
                     # Convert final pixel position back to Hz values
-                    txtbx.f1, txtbx.f2 = self._pixels_to_hz(txtbx.rect.x, txtbx.rect.y)
+                    txtbx.f1, txtbx.f2 = self._pixels_to_hz(*txtbx.rect.center)
                 
                 # Check if this label is now dragging
                 if txtbx.is_dragging:
@@ -579,11 +669,7 @@ class IPALabels:
             # Check if formant frequencies are stored (preferred method)
             if textbox.f1 is not None and textbox.f2 is not None:
                 # Recalculate pixel position from Hz values (preserves formant location)
-                new_x, new_y = self._hz_to_pixels(textbox.f1, textbox.f2)
-                # Update textbox x position
-                textbox.rect.x = new_x
-                # Update textbox y position
-                textbox.rect.y = new_y
+                textbox.rect.center = self._hz_to_pixels(textbox.f1, textbox.f2)
             else:
                 # Otherwise, scale pixel position proportionally
                 # Use proportional scaling if no Hz values available
@@ -609,24 +695,14 @@ class MenuButton:
         self.clicked = False  # Track whether the button is currently clicked
         self.toggle_color = toggle_color  # Store which color to use for toggle
 
-        # Try to get PyInstaller bundled resource path first
-        self.is_bundled = False
-        try:
-            # When bundled as exe, resources are in _MEIPASS temp directory
-            self.base_path = sys._MEIPASS
-            self.is_bundled = True
-        except AttributeError:
-            # In normal Python, use module directory
-            self.base_path = os.path.dirname(os.path.abspath(__file__))
-
         # Cache both colored and black button images to avoid reloading every frame
         self._load_images()
 
     def _load_images(self):
         """Load and cache both button image variants (colored and black).
 
-        Images are looked up in an `images/` directory relative to the project or
-        under the PyInstaller `_MEIPASS` directory when bundled. If image files
+        Images are found with get_resource_path (the project folder, or the
+        PyInstaller bundle when running as an .exe). If image files
         are missing a small colored placeholder surface is created so the UI
         remains functional.
         """
@@ -677,16 +753,14 @@ class RecordingLabel:
     def __init__(self, x, y, image_filename="1.png", f1=None, f2=None, label_color="green"):
         # Store image filename for loading
         self.filename = image_filename
-        # Create rectangle for positioning and collision detection
-        self.rect = pygame.Rect(x, y, 80, 70)
+        # Rectangle for positioning and collision detection, the same size as the drawn image
+        # so rect.center is the symbol's center (the point that corresponds to f1/f2)
+        self.rect = pygame.Rect(x, y, 60, 56)
         
         # Store formant values in Hz (to avoid pixel rounding errors)
         self.f1 = f1
         self.f2 = f2
         
-        # Store label color
-        self.label_color = label_color
-
         # Offset from mouse position when dragging (for smooth drag)
         self.offset_x = 0
         self.offset_y = 0
@@ -697,15 +771,14 @@ class RecordingLabel:
         # Label starts invisible - only shown when button is clicked in menu
         self.visible = False
 
-        # Use the same get_resource_path helper as MenuButton
-        # This matches the internal EXE structure: VocalTrack/images/[color]/[file]
+        # Same image location as MenuButton: VocalTrack/images/[color]/[file]
         image_path = get_resource_path(os.path.join("VocalTrack", "images", label_color, image_filename))
         
         try:
             self.image_original = pygame.image.load(image_path).convert_alpha()
             self.image = pygame.transform.scale(self.image_original, (60, 56))
         except OSError:
-            # This is what you were seeing! If the path above is wrong, it draws a box:
+            # Image missing: draw a plain colored box instead
             logger.error(f"RecordingLabel failed to load: {image_path}")
             self.image_original = pygame.Surface((60, 56))
             color_rgb = (50, 150, 50) if label_color == 'green' else (50, 100, 200)

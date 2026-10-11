@@ -3,26 +3,37 @@ import pygame
 
 # Define Point class inheriting from pygame's Sprite class
 class Point(pygame.sprite.Sprite):
-    """A visual point representing a formant measurement. Used for LiveVoice and LivePitch,
-    and potentially new visualizations in the future. Each Point is a circle drawn on a transparent 
-    surface, with color and position based on formant data. The Point class also includes a method 
+    """A visual point representing one plotted measurement. Used for LiveVowel and LivePitch,
+    and potentially new visualizations in the future. Each Point is a circle drawn on a transparent
+    surface, with color and position based on formant data. The Point class also includes a method
     to change its color dynamically, which can be used to indicate changes in voicing or other parameters.
 
+    A point does not keep the audio it was measured from (that would hold every analysis window in
+    memory for as long as the point is on screen). It keeps where its analysis window is in the saved
+    recording instead, so the audio can be found again in the exported WAV file.
+
     Args:
-        sound: Sound object with formant data
         plot_x: X coordinate on screen
         plot_y: Y coordinate on screen
         radius: Circle radius in pixels
         color: RGB tuple for point color
+        f1: Smoothed F1 of the point in Hz (LiveVowel)
+        f2: Smoothed F2 of the point in Hz (LiveVowel)
+        raw_f0: Unsmoothed f0 of the frame in Hz
+        recording_time: Center of the analysis window, in seconds from the start of the recording
+            (the same time as time_ms in the exported CSV)
+        recording_name: Name of the recording the frame belongs to (the start of its file names)
     """
     # Initialize Point instance with optional parameters (defaults provided)
-    def __init__(self, sound=None, plot_x=-100, plot_y=-100, radius=12, color=(166, 33, 64), f1=None, f2=None):
+    def __init__(self, plot_x=-100, plot_y=-100, radius=12, color=(166, 33, 64), f1=None, f2=None,
+                 raw_f0=None, recording_time=None, recording_name=None):
         # Call parent Sprite class constructor to initialize sprite functionality
         super().__init__()
 
-        # sound and sound information for the frame/point
-        # Store reference to Sound object containing audio analysis data for this point
-        self.sound = sound
+        # Raw f0 of the frame, and where the frame is in the saved recording
+        self.raw_f0 = raw_f0
+        self.recording_time = recording_time
+        self.recording_name = recording_name
         # Store smoothed F1 and F2 values so we can recalculate coordinates if log/linear scale changes
         self.f1 = f1
         self.f2 = f2

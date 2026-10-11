@@ -4,6 +4,16 @@ import pygame
 # Disable pylint warning about pygame members (they exist but pylint doesn't detect them)
 # pylint: disable=no-member
 
+# Number keys 1-5 (top row and keypad), used for the formant markers in LiveSpectrum
+NUMBER_KEYS = {
+    1: (pygame.K_1, pygame.K_KP1),
+    2: (pygame.K_2, pygame.K_KP2),
+    3: (pygame.K_3, pygame.K_KP3),
+    4: (pygame.K_4, pygame.K_KP4),
+    5: (pygame.K_5, pygame.K_KP5),
+}
+
+
 class EventHolder:
     """
     Processes and stores pygame events for easy access in the main loop.
@@ -24,7 +34,6 @@ class EventHolder:
         self.events = events
         # Initialize all event attributes to None (will be set if event occurs)
         self.right_click_down = None  # Right mouse button pressed
-        self.right_click_up = None    # Right mouse button released
         self.left_click_down = None   # Left mouse button pressed
         self.left_click_up = None     # Left mouse button released
         self.left_scroll_up = None    # Mouse scroll wheel up
@@ -43,12 +52,25 @@ class EventHolder:
         self.ctrl_h = None            # Ctrl+? pressed (toggle help overlay)
         self.ctrl_s = None            # Ctrl+S pressed (save current IPA template)
         self.ctrl_g = None            # Ctrl+G pressed (toggle grid)
-        self.ctrl_l = None            # Ctrl+L pressed (toggle log/linear frequency scale)
+        self.ctrl_l = None            # Ctrl+L pressed (toggle log scale / LPC overlay)
         self.ctrl_t = None            # Ctrl+T pressed (toggle template vowels)
-        self.ctrl_r = None            # Ctrl+R pressed (toggle recording)
         self.ctrl_p = None            # Ctrl+P pressed (toggle performance overlay)
+        self.bracket_left = None      # [ pressed (decrease max formant)
+        self.bracket_right = None     # ] pressed (increase max formant)
+        self.ctrl_bracket_left = None # Ctrl+[ or Ctrl+Down
+        self.ctrl_bracket_right = None # Ctrl+] or Ctrl+Up
         self.space_down = None        # Space pressed (start recording)
-        self.space_up = None          # Space released (stop recording)
+        self.number_pressed = None    # Number key 1-5 pressed this frame (no Ctrl/Cmd/Alt), as an int
+
+        # Current state of keys and mouse (not events): read here so the visualizers never query
+        # pygame directly
+        self.shift_held = bool(pygame.key.get_mods() & pygame.KMOD_SHIFT)  # Shift is held down
+        self.left_mouse_held = bool(pygame.mouse.get_pressed()[0])          # Left mouse button is held
+        self.mouse_pos = pygame.mouse.get_pos()                             # Mouse position (x, y)
+        held_keys = pygame.key.get_pressed()
+        # Number key 1-5 held down (lowest first), as an int, or None
+        self.number_held = next((n for n, keys in NUMBER_KEYS.items()
+                                 if any(held_keys[k] for k in keys)), None)
 
         # Treat Ctrl and Command (Meta) as equivalent for cross-platform shortcuts.
         modifier_mask = pygame.KMOD_CTRL | pygame.KMOD_META
@@ -77,9 +99,6 @@ class EventHolder:
                 if event.button == 1:
                     # Left mouse button (button==1) released
                     self.left_click_up = event
-                elif event.button == 3:
-                    # Right mouse button (button==3) released
-                    self.right_click_up = event
             elif event.type == pygame.MOUSEMOTION:
                 # Mouse moved (contains position and relative motion info)
                 self.mouse_move = event
@@ -115,12 +134,21 @@ class EventHolder:
                 elif event.mod & modifier_mask and event.key == pygame.K_l:
                     # Ctrl+L pressed - toggle log/linear frequency scale
                     self.ctrl_l = event
-                elif event.mod & modifier_mask and event.key == pygame.K_r:
-                    # Ctrl+R pressed - toggle recording
-                    self.ctrl_r = event
                 elif event.mod & modifier_mask and event.key == pygame.K_p:
                     # Ctrl+P pressed - toggle performance overlay
                     self.ctrl_p = event
+                elif event.mod & modifier_mask and event.key in (pygame.K_LEFTBRACKET, pygame.K_DOWN):
+                    # Ctrl+[ or Ctrl+Down - decrease max formant
+                    self.ctrl_bracket_left = event
+                elif event.mod & modifier_mask and event.key in (pygame.K_RIGHTBRACKET, pygame.K_UP):
+                    # Ctrl+] or Ctrl+Up - increase max formant
+                    self.ctrl_bracket_right = event
+                elif event.key == pygame.K_LEFTBRACKET:
+                    # [ pressed - decrease max formant
+                    self.bracket_left = event
+                elif event.key == pygame.K_RIGHTBRACKET:
+                    # ] pressed - increase max formant
+                    self.bracket_right = event
                 elif event.key == pygame.K_BACKSPACE:
                     # Backspace pressed (undo last track)
                     self.backspace = event
@@ -139,8 +167,9 @@ class EventHolder:
                 elif event.key == pygame.K_SPACE:
                     # Space pressed (start recording)
                     self.space_down = event
-            elif event.type == pygame.KEYUP:
-                # Keyboard key released
-                if event.key == pygame.K_SPACE:
-                    # Space released (stop recording)
-                    self.space_up = event
+                elif not (event.mod & (modifier_mask | pygame.KMOD_ALT)):
+                    # Number key 1-5 (top row or keypad) pressed (formant markers in LiveSpectrum);
+                    # the last one pressed this frame wins
+                    for n, keys in NUMBER_KEYS.items():
+                        if event.key in keys:
+                            self.number_pressed = n
