@@ -1,12 +1,7 @@
-/VocalTrack/__pycache__
+__pycache__/
+*.egg-info/
+/vocaltrack_env
+/vocaltrack-env
 .VocalTrack_settings.json
-*.json
-/.venv311-test
-/VocalTrack.egg-info
-/VocalTrack/utils
-/__pycache__
-/VocalTrack.egg-info
-/__pycache__
 /recordings
-/wiki-videos
-/R1
+/benchmarking
